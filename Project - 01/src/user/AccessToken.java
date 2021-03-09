@@ -1,3 +1,5 @@
+package user;
+
 public class AccessToken {
 
     private final String TOKEN_SUFFIX = "87";
@@ -54,6 +56,6 @@ public class AccessToken {
 
     @Override
     public String toString() {
-        return "AccessToken:\nUsername: " + username + "\nToken value: " + this.encodedToken(this.tokenLength);
+        return "user.AccessToken:\nUsername: " + username + "\nToken value: " + this.encodedToken(this.tokenLength);
     }
 }
