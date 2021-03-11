@@ -12,8 +12,8 @@ public class AccessToken {
         this.tokenLength = this.username.length() + TOKEN_SUFFIX_SIZE;
     }
 
-    public AccessToken(User user){
-        this.username = user.getUsername();
+    public AccessToken(Client client){
+        this.username = client.getUsername();
         this.tokenLength = this.username.length() + TOKEN_SUFFIX_SIZE;
     }
 
@@ -25,8 +25,8 @@ public class AccessToken {
             this.tokenLength = tokenLength;
     }
 
-    public AccessToken(User user, int tokenLength){
-        this.username = user.getUsername();
+    public AccessToken(Client client, int tokenLength){
+        this.username = client.getUsername();
         if (tokenLength  > username.length() + TOKEN_SUFFIX_SIZE)
             this.tokenLength = this.username.length() + TOKEN_SUFFIX_SIZE;
         else

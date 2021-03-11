@@ -1,10 +1,10 @@
 package user;
 
-public class User {
+public class Client {
 
     private String username, password;
 
-    public User(String username, String password){
+    public Client(String username, String password){
     this.username = username;
     this.password = password;
     }
@@ -27,6 +27,6 @@ public class User {
 
     @Override
     public String toString(){
-        return "Username: " + this.username;
+        return "Username: " + this.username + " | Password: " + this.password;
     }
 }
