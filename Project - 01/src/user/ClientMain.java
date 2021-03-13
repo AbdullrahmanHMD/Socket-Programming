@@ -15,9 +15,12 @@ public class ClientMain {
     public static void main(String[] args) {
         if(!InitializeConnection())
             System.err.println("Failed to connect to server.");
+        else{
 
+
+
+        }
     }
-
 
     private static boolean InitializeConnection() {
 
@@ -25,17 +28,16 @@ public class ClientMain {
                 new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, DEFAULT_SERVER_PORT);
 
         connectionToServer.EstablishConnection();
-
         Scanner reader = new Scanner(System.in);
-        System.out.println("Establishing network...");
 
+        System.out.println("Establishing network...");
         System.out.println("Enter your username:");
 
-        String message =  reader.nextLine();;
+        String message = reader.nextLine();;
 
-        byte[] tcpPayload = protocolByteArray(Auth_Phase, Auth_Request, message.length(), message);
-
+        byte[] tcpPayload = getTCPByteArray(Auth_Phase, Auth_Request, message.length(), message);
         String serverResponse = connectionToServer.SentRequest(tcpPayload);
+
         System.out.println("Response from server: " + serverResponse);
 
         connectionToServer.TerminateConnection();

@@ -9,7 +9,7 @@ public class AuthenticatedConnection {
     private final String serverAddress;
     private final int serverPort;
     private Socket socket;
-    private BufferedReader reader;
+    private DataInputStream reader;
     private DataOutputStream writer;
 
     public AuthenticatedConnection(String serverAddress, int serverPort) {
@@ -20,7 +20,8 @@ public class AuthenticatedConnection {
     public void EstablishConnection() {
         try {
             socket = new Socket(serverAddress, serverPort);
-            reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            reader = new DataInputStream(new DataInputStream(socket.getInputStream()));
             writer = new DataOutputStream(new DataOutputStream(socket.getOutputStream()));
 
         } catch (IOException | NullPointerException e) {
@@ -33,13 +34,11 @@ public class AuthenticatedConnection {
 
         try {
             writer.write(message);
-            writer.flush();
-            response = reader.readLine();
+            response = new String(reader.readAllBytes());
 
         } catch (IOException | NullPointerException e) {
             e.printStackTrace();
         }
-
         return response;
     }
 

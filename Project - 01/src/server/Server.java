@@ -2,20 +2,20 @@ package server;
 
 import user.Client;
 
-import javax.xml.transform.sax.SAXSource;
 import java.util.ArrayList;
+
+import static utils.Utilities.*;
 
 import java.io.*;
 import java.net.*;
 
 public class Server {
 
-    private final Byte Auth_Challenge = 1;
-    private final Byte Auth_Fail = 2;
-    private final Byte Auth_Success = 3;
-
-    private final ServerSocket authenticationServerSocket, requestServerSocket;
     private final ArrayList<Client> clients;
+    private ServerSocket authenticationServerSocket, requestServerSocket;
+    private DataInputStream reader;
+    private DataOutputStream writer;
+
 
     public Server(int port) {
 
@@ -29,9 +29,75 @@ public class Server {
             e.printStackTrace();
 
         }
-        while (true) {
-            AcceptClient();
+        if(Accept()){
+            System.out.println("AUTHENTICATION COMPLETE");
         }
+    }
+
+    private boolean Accept() {
+        Socket authenticationSocket = null;
+        String serverMessage = "";
+        String clientResponse = "";
+
+        String username;
+        String password;
+
+        int authAttempts = 0;
+
+        byte[] serverResponse;
+        byte phase;
+        byte type;
+        int size;
+        try {
+            authenticationSocket = authenticationServerSocket.accept();
+            reader = new DataInputStream(new DataInputStream(authenticationSocket.getInputStream()));
+            writer = new DataOutputStream(new DataOutputStream(authenticationSocket.getOutputStream()));
+
+            System.out.println("Client request accepted" + authenticationSocket.getRemoteSocketAddress());
+
+            phase = reader.readByte();
+            type = reader.readByte();
+            size = reader.readInt();
+
+            clientResponse = new String(reader.readNBytes(size));
+
+            if (!AuthenticateUsername(clientResponse)) {
+                serverMessage = "No such user. Authentication failed";
+                serverResponse = getTCPByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                writer.write(serverResponse);
+            } else {
+                username = clientResponse;
+
+                while(authAttempts < 3){
+
+                serverMessage = "Enter Your password";
+                serverResponse = getTCPByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(), serverMessage);
+                writer.write(serverResponse);
+
+                phase = reader.readByte();
+                type = reader.readByte();
+                size = reader.readInt();
+
+                clientResponse = new String(reader.readNBytes(size));
+
+                if(AuthenticatePassword(username, clientResponse)) {
+                    password = clientResponse;
+
+                    serverMessage = "Client authenticated. Welcome" + username + "!";
+                    serverResponse = getTCPByteArray(Auth_Phase, Auth_Success, serverMessage.length(), serverMessage);
+                    return true;
+                }else{
+                    authAttempts++;
+                }
+                }
+                serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connections";
+                serverResponse = getTCPByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                return false;
+            }
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 
     private void AcceptClient() {
