@@ -29,7 +29,7 @@ public class Server {
             e.printStackTrace();
 
         }
-        if(Accept()){
+        if (Accept()) {
             System.out.println("AUTHENTICATION COMPLETE");
         }
     }
@@ -68,83 +68,36 @@ public class Server {
             } else {
                 username = clientResponse;
 
-                while(authAttempts < 3){
+                while (authAttempts < 3) {
+                    serverMessage = "Enter Your password";
+                    serverResponse = getTCPByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(), serverMessage);
+                    writer.write(serverResponse);
 
-                serverMessage = "Enter Your password";
-                serverResponse = getTCPByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(), serverMessage);
-                writer.write(serverResponse);
+                    phase = reader.readByte();
+                    type = reader.readByte();
+                    size = reader.readInt();
+                    clientResponse = new String(reader.readNBytes(size));
 
-                phase = reader.readByte();
-                type = reader.readByte();
-                size = reader.readInt();
-
-                clientResponse = new String(reader.readNBytes(size));
-
-                if(AuthenticatePassword(username, clientResponse)) {
-                    password = clientResponse;
-
-                    serverMessage = "Client authenticated. Welcome" + username + "!";
-                    serverResponse = getTCPByteArray(Auth_Phase, Auth_Success, serverMessage.length(), serverMessage);
-                    return true;
-                }else{
-                    authAttempts++;
+                    System.out.println(clientResponse);
+                    if (AuthenticatePassword(username, clientResponse)) {
+                        System.out.println("Bruh moment");
+                        serverMessage = "Client authenticated. Welcome" + username + "!";
+                        serverResponse = getTCPByteArray(Auth_Phase, Auth_Success, serverMessage.length(), serverMessage);
+                        writer.write(serverResponse);
+                        return true;
+                    } else {
+                        authAttempts++;
+                    }
                 }
-                }
-                serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connections";
+                serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connection";
                 serverResponse = getTCPByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                writer.write(serverResponse);
                 return false;
             }
         } catch (IOException | NullPointerException e) {
             e.printStackTrace();
         }
         return false;
-    }
-
-    private void AcceptClient() {
-        BufferedReader reader = null;
-        PrintWriter writer = null;
-
-        Socket authenticationSocket = null;
-        String username, password;
-
-        try {
-            authenticationSocket = authenticationServerSocket.accept();
-
-            reader = new BufferedReader(new InputStreamReader(authenticationSocket.getInputStream()));
-            writer = new PrintWriter(authenticationSocket.getOutputStream());
-
-            String initMessage = reader.readLine();
-
-            writer.println("Client request accepted" + authenticationSocket.getRemoteSocketAddress() +
-                    "|| Enter your username:");
-            writer.flush();
-            username = reader.readLine();
-            System.out.println("Username: " + username);
-
-            while (!AuthenticateUsername(username)) {
-                writer.println("Username not recognized, try again");
-                writer.flush();
-                username = reader.readLine();
-            }
-            writer.println("Enter your password:");
-            writer.flush();
-
-            password = reader.readLine();
-
-            while (!AuthenticatePassword(username, password)) {
-                writer.println("Server: Incorrect password, try again");
-                writer.flush();
-                password = reader.readLine();
-            }
-            System.out.println("Client " + username + " is now connected");
-
-            writer.println("Connection authentication complete. Welcome " + username + "!");
-            writer.flush();
-
-        } catch (IOException | NullPointerException e) {
-            e.printStackTrace();
-        }
-
     }
 
     private void FillClients() {

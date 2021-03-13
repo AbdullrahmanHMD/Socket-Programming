@@ -1,5 +1,7 @@
 package user;
 
+import utils.TCPPayload;
+
 import java.io.*;
 import java.net.Socket;
 import java.util.Arrays;
@@ -29,12 +31,23 @@ public class AuthenticatedConnection {
         }
     }
 
-    public String SentRequest(byte[] message) {
-        String response = "";
+    public TCPPayload SendRequest(byte[] message) {
+        TCPPayload response = null;
+        byte phase;
+        byte type;
+        int size;
+        String msg;
 
         try {
             writer.write(message);
-            response = new String(reader.readAllBytes());
+
+            phase = reader.readByte();
+            type = reader.readByte();
+            size = reader.readInt();
+
+            msg = new String(reader.readNBytes(size));
+
+            response = new TCPPayload(phase, type, size, msg);
 
         } catch (IOException | NullPointerException e) {
             e.printStackTrace();

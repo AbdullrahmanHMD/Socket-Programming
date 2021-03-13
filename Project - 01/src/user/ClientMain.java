@@ -1,9 +1,9 @@
 package user;
 
-import javax.xml.transform.sax.SAXSource;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
+import utils.TCPPayload;
+
 import java.util.Scanner;
+
 import static utils.Utilities.*;
 
 public class ClientMain {
@@ -13,16 +13,19 @@ public class ClientMain {
     public static String INIT_MESSAGE = "init";
 
     public static void main(String[] args) {
-        if(!InitializeConnection())
+        if (!InitializeConnection())
             System.err.println("Failed to connect to server.");
-        else{
-
+        else {
 
 
         }
     }
 
     private static boolean InitializeConnection() {
+
+        TCPPayload serverResponse;
+        byte[] clientResponse;
+        String clientMessage;
 
         AuthenticatedConnection connectionToServer =
                 new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, DEFAULT_SERVER_PORT);
@@ -33,16 +36,27 @@ public class ClientMain {
         System.out.println("Establishing network...");
         System.out.println("Enter your username:");
 
-        String message = reader.nextLine();;
+        clientMessage = reader.nextLine();
 
-        byte[] tcpPayload = getTCPByteArray(Auth_Phase, Auth_Request, message.length(), message);
-        String serverResponse = connectionToServer.SentRequest(tcpPayload);
+        clientResponse = getTCPByteArray(Auth_Phase, Auth_Request, clientMessage.length(), clientMessage);
+        serverResponse = connectionToServer.SendRequest(clientResponse);
 
-        System.out.println("Response from server: " + serverResponse);
+        if (serverResponse.getType() == Auth_Fail) {
+            connectionToServer.TerminateConnection();
+            return false;
+        }
 
-        connectionToServer.TerminateConnection();
-
-        return false;
+        while (serverResponse.getType() == Auth_Challenge) {
+            System.out.println("Enter your password:");
+            clientMessage = reader.nextLine();
+            clientResponse = getTCPByteArray(Auth_Phase, Auth_Request, clientMessage.length(), clientMessage);
+            serverResponse = connectionToServer.SendRequest(clientResponse);
+        }
+        if (serverResponse.getType() == Auth_Fail) {
+            connectionToServer.TerminateConnection();
+            return false;
+        } else
+            return serverResponse.getType() == Auth_Success;
     }
 
 }
