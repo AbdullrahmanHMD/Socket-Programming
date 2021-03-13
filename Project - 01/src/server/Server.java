@@ -1,6 +1,8 @@
 package server;
 
 import user.Client;
+
+import javax.xml.transform.sax.SAXSource;
 import java.util.ArrayList;
 
 import java.io.*;
@@ -8,17 +10,20 @@ import java.net.*;
 
 public class Server {
 
-    private final ServerSocket serverSocket;
-    private final ArrayList<Client> clients;
+    private final Byte Auth_Challenge = 1;
+    private final Byte Auth_Fail = 2;
+    private final Byte Auth_Success = 3;
 
+    private final ServerSocket authenticationServerSocket, requestServerSocket;
+    private final ArrayList<Client> clients;
 
     public Server(int port) {
 
-        clients = new ArrayList<>();
+        clients = new ArrayList<Client>();
         FillClients();
 
         try {
-            this.serverSocket = new ServerSocket(port);
+            this.authenticationServerSocket = new ServerSocket(port);
             System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
         } catch (IOException e) {
             e.printStackTrace();
@@ -30,68 +35,73 @@ public class Server {
     }
 
     private void AcceptClient() {
-        BufferedReader reader;
-        PrintWriter writer;
+        BufferedReader reader = null;
+        PrintWriter writer = null;
 
-        Socket authenticationSocket;
+        Socket authenticationSocket = null;
         String username, password;
 
         try {
-            authenticationSocket = serverSocket.accept();
+            authenticationSocket = authenticationServerSocket.accept();
 
             reader = new BufferedReader(new InputStreamReader(authenticationSocket.getInputStream()));
             writer = new PrintWriter(authenticationSocket.getOutputStream());
 
-            writer.println("Client request accepted" + authenticationSocket.getRemoteSocketAddress());
-            writer.println("Enter your username:");
-            username = reader.readLine();
-            writer.flush();
-            while(!AuthenticateUsername(username)) {
-                writer.println("Server: Username not recognized, try again");
-                username = reader.readLine();
-                writer.flush();
-            }
+            String initMessage = reader.readLine();
 
+            writer.println("Client request accepted" + authenticationSocket.getRemoteSocketAddress() +
+                    "|| Enter your username:");
+            writer.flush();
+            username = reader.readLine();
+            System.out.println("Username: " + username);
+
+            while (!AuthenticateUsername(username)) {
+                writer.println("Username not recognized, try again");
+                writer.flush();
+                username = reader.readLine();
+            }
             writer.println("Enter your password:");
+            writer.flush();
+
             password = reader.readLine();
 
-            writer.flush();
-            while(!AuthenticatePassword(username, password)) {
+            while (!AuthenticatePassword(username, password)) {
                 writer.println("Server: Incorrect password, try again");
-                username = reader.readLine();
                 writer.flush();
+                password = reader.readLine();
             }
+            System.out.println("Client " + username + " is now connected");
 
-            System.out.println("Client request accepted" + authenticationSocket.getRemoteSocketAddress());
-            System.out.println("Your username: " + username);
-
+            writer.println("Connection authentication complete. Welcome " + username + "!");
             writer.flush();
-        } catch (IOException e) {
+
+        } catch (IOException | NullPointerException e) {
             e.printStackTrace();
         }
+
     }
 
-    private void FillClients(){
-        String[] username = {"Abdul", "Kuze", "Zeyd", "Sarieh", "Noor", "Mwaffak"};
-        String[] passwords = {"2468", "1357", "12345", "556677", "12345", "54321"};
+    private void FillClients() {
+        String[] username = {"Abdul", "Kuze", "Zeyd"};
+        String[] passwords = {"2468", "1357", "12345"};
 
-        for (int i = 0; i < username.length; i++){
+        for (int i = 0; i < username.length; i++) {
             this.clients.add(new Client(username[i], passwords[i]));
         }
     }
 
     private boolean AuthenticateUsername(String username) {
-        for(Client c : this.clients){
-            if(c.getUsername().equals(username)){
+        for (Client c : this.clients) {
+            if (c.getUsername().equals(username)) {
                 return true;
             }
         }
         return false;
     }
 
-    private boolean AuthenticatePassword(String username, String password){
-        for(Client c : this.clients){
-            if(c.getUsername().equals(username) && c.getPassword().equals(password)){
+    private boolean AuthenticatePassword(String username, String password) {
+        for (Client c : this.clients) {
+            if (c.getUsername().equals(username) && c.getPassword().equals(password)) {
                 return true;
             }
         }
