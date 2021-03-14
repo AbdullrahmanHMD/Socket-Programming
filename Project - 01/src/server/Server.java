@@ -8,6 +8,7 @@ import static utils.Utilities.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.Arrays;
 
 public class Server {
 
@@ -58,7 +59,6 @@ public class Server {
             phase = reader.readByte();
             type = reader.readByte();
             size = reader.readInt();
-
             clientResponse = new String(reader.readNBytes(size));
 
             if (!AuthenticateUsername(clientResponse)) {
@@ -67,9 +67,9 @@ public class Server {
                 writer.write(serverResponse);
             } else {
                 username = clientResponse;
-
+                String failedMessage = "";
                 while (authAttempts < 3) {
-                    serverMessage = "Enter Your password";
+                    serverMessage = failedMessage + "Enter Your password:";
                     serverResponse = getTCPByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(), serverMessage);
                     writer.write(serverResponse);
 
@@ -78,15 +78,15 @@ public class Server {
                     size = reader.readInt();
                     clientResponse = new String(reader.readNBytes(size));
 
-                    System.out.println(clientResponse);
                     if (AuthenticatePassword(username, clientResponse)) {
                         System.out.println("Bruh moment");
-                        serverMessage = "Client authenticated. Welcome" + username + "!";
+                        serverMessage = "Client authenticated. Welcome " + username + "!";
                         serverResponse = getTCPByteArray(Auth_Phase, Auth_Success, serverMessage.length(), serverMessage);
                         writer.write(serverResponse);
                         return true;
                     } else {
                         authAttempts++;
+                        failedMessage = String.format("Incorrect password | " + (3 - authAttempts) + " attempt%s left | ", authAttempts==1? "s" : "");
                     }
                 }
                 serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connection";
@@ -102,7 +102,7 @@ public class Server {
 
     private void FillClients() {
         String[] username = {"Abdul", "Kuze", "Zeyd"};
-        String[] passwords = {"2468", "1357", "12345"};
+        String[] passwords = {"1232abc", "1357", "12345"};
 
         for (int i = 0; i < username.length; i++) {
             this.clients.add(new Client(username[i], passwords[i]));

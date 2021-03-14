@@ -42,21 +42,24 @@ public class ClientMain {
         serverResponse = connectionToServer.SendRequest(clientResponse);
 
         if (serverResponse.getType() == Auth_Fail) {
+            System.err.println(serverResponse.getMessage());
             connectionToServer.TerminateConnection();
             return false;
         }
 
         while (serverResponse.getType() == Auth_Challenge) {
-            System.out.println("Enter your password:");
+            System.out.println(serverResponse.getMessage());
             clientMessage = reader.nextLine();
             clientResponse = getTCPByteArray(Auth_Phase, Auth_Request, clientMessage.length(), clientMessage);
             serverResponse = connectionToServer.SendRequest(clientResponse);
         }
         if (serverResponse.getType() == Auth_Fail) {
+            System.err.println(serverResponse.getMessage());
             connectionToServer.TerminateConnection();
             return false;
-        } else
+        } else{
+            System.out.println(serverResponse.getMessage());
             return serverResponse.getType() == Auth_Success;
+        }
     }
-
 }

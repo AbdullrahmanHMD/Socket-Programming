@@ -44,7 +44,6 @@ public class AuthenticatedConnection {
             phase = reader.readByte();
             type = reader.readByte();
             size = reader.readInt();
-
             msg = new String(reader.readNBytes(size));
 
             response = new TCPPayload(phase, type, size, msg);

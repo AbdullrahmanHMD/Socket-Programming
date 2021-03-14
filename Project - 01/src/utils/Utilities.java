@@ -16,7 +16,7 @@ public class Utilities {
 
         byte[] stringToByte = payload.getBytes(StandardCharsets.UTF_8);
 
-        int tcpPayloadSize = 1 + 1 + 4 + stringToByte.length + 1;
+        int tcpPayloadSize = 1 + 1 + 4 + stringToByte.length;
         byte[] tcpPayload = new byte[tcpPayloadSize];
 
         tcpPayload[0] = phase;
@@ -33,8 +33,4 @@ public class Utilities {
         }
         return tcpPayload;
     }
-
-
-
-
 }
