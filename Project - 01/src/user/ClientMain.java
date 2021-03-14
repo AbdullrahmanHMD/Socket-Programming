@@ -3,6 +3,8 @@ package user;
 import utils.TCPPayload;
 
 import java.util.Scanner;
+import java.util.regex.Pattern;
+
 import static utils.Utilities.*;
 
 public class ClientMain {
@@ -13,7 +15,7 @@ public class ClientMain {
         if (!InitializeConnection())
             System.err.println("Failed to connect to server.");
         else {
-
+            InitializeQuerying();
         }
     }
 
@@ -24,7 +26,7 @@ public class ClientMain {
         String clientMessage;
 
         AuthenticatedConnection connectionToServer =
-                new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, DEFAULT_PORT);
+                new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, AUTH_PORT);
 
         connectionToServer.EstablishConnection();
         Scanner reader = new Scanner(System.in);
@@ -57,6 +59,7 @@ public class ClientMain {
             System.out.println("Authentication complete!");
             accessToken = serverResponse.getMessage();
             System.out.println("Access Token Generated | Your access token is: " + accessToken);
+            connectionToServer.TerminateConnection();
             return true;
         }
         return false;
@@ -66,25 +69,44 @@ public class ClientMain {
         TCPPayload serverResponse;
         byte[] clientResponse;
         String clientMessage;
-
+        byte query;
         AuthenticatedConnection connectionToServer =
-                new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, DEFAULT_PORT);
+                new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, QUERY_PORT);
 
-        System.out.println(connectionToServer.readFromServer().getMessage());
         connectionToServer.EstablishConnection();
+        System.out.println(connectionToServer.readFromServer().getMessage());
 
         Scanner reader = new Scanner(System.in);
         clientMessage = reader.nextLine();
 
         while (!clientMessage.equals("QUIT")){
-//
-//            clientResponse = getRequestByteArray();
-//            serverResponse = connectionToServer.SendRequest();
-//
+            query = getQuery(clientMessage);
+
+            while(query == 0){
+                System.err.println("Invalid query, try again");
+                clientMessage = reader.nextLine();
+                query = getQuery(clientMessage);
+            }
+            System.out.println(query);
+
+            clientResponse = getRequestByteArray(Query_Phase, query, clientMessage.length(), clientMessage);
+            serverResponse = connectionToServer.SendRequest(clientResponse);
+
+            System.out.println("Enter a request:");
+            clientMessage = reader.nextLine();
+
 
         }
 
-
         return false;
+    }
+
+
+    private static byte getQuery(String message) {
+        if (Pattern.compile(dateRegex).matcher(message).matches())
+            return Query_Image;
+        else if (message.toLowerCase().equals("weather"))
+            return Query_Weather;
+        return 0;
     }
 }

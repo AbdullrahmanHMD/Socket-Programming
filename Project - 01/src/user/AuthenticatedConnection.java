@@ -81,6 +81,6 @@ public class AuthenticatedConnection {
         } catch (IOException | NullPointerException e) {
             e.printStackTrace();
         }
-        System.out.println("Disconnected from server.");
+        System.out.println("Disconnected from socket.");
     }
 }

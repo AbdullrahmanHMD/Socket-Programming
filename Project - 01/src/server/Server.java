@@ -8,6 +8,7 @@ import static utils.Utilities.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.regex.Pattern;
 
 public class Server {
 
@@ -35,12 +36,12 @@ public class Server {
             System.out.println("AUTHENTICATION COMPLETE");
 
             try {
-                this.queryServerSocket = new ServerSocket(port);
+                this.queryServerSocket = new ServerSocket(QUERY_PORT);
                 System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
+                QueryingPhase();
             } catch (IOException | NullPointerException e) {
                 e.printStackTrace();
             }
-
         }
     }
 
@@ -111,6 +112,11 @@ public class Server {
 
     private void QueryingPhase() {
 
+        URL weatherURL;
+        URL apodURL;
+
+        HttpURLConnection apiConnection;
+
         Socket querySocket = null;
         String serverMessage = "";
         String clientResponse = "";
@@ -121,24 +127,75 @@ public class Server {
         byte type;
         int size;
         try {
-
             querySocket = queryServerSocket.accept();
+
             reader = new DataInputStream(new DataInputStream(querySocket.getInputStream()));
             writer = new DataOutputStream(new DataOutputStream(querySocket.getOutputStream()));
-            serverMessage = serverWelcomeMessage(clientUsername);
+
+            serverMessage=serverWelcomeMessage(clientUsername);
             serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(), serverMessage);
 
-            phase = reader.readByte();
-            type = reader.readByte();
-            size = reader.readInt();
-            token = new String(reader.readNBytes(size));
+            writer.write(serverResponse);
 
+            while(true){
 
+                phase = reader.readByte();
+                type = reader.readByte();
+                size = reader.readInt();
+                token = new String(reader.readNBytes(size));
+
+                if(type == Query_Image){
+
+                    apodURL = new URL(APOD_BASE_URL + token);
+                    apiConnection = (HttpURLConnection) apodURL.openConnection();
+                    apiConnection.setRequestMethod("GET");
+                    int status = apiConnection.getResponseCode();
+
+                    String line = "";
+                    StringBuilder lines = new StringBuilder();
+
+                    BufferedReader buffredReader = getStreamReader(status, apiConnection);
+
+                    while((line = buffredReader.readLine()) != null){
+                            lines.append(line);
+                    }
+                    String imageURL = getUrlFromText(lines.toString().split("\""));
+                    System.out.println(imageURL);
+                    buffredReader.close();
+
+                    serverMessage = imageURL;
+                    serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
+                            serverMessage);
+
+                    writer.write(serverResponse);
+                }
+                else if(type == Query_Weather){
+                    weatherURL = new URL(INSIGHT_BASE_URL);
+
+                    apiConnection = (HttpURLConnection) weatherURL.openConnection();
+                    apiConnection.setRequestMethod("GET");
+                    int status = apiConnection.getResponseCode();
+
+                    String line = "";
+                    StringBuilder lines = new StringBuilder();
+
+                    BufferedReader buffredReader = getStreamReader(status, apiConnection);
+
+                    while((line = buffredReader.readLine()) != null){
+                        lines.append(line);
+                    }
+                    buffredReader.close();
+                    serverMessage = lines.toString();
+                    serverResponse = getRequestByteArray(Query_Phase, Query_Success,serverMessage.length(),
+                            serverMessage);
+
+                    writer.write(serverResponse);
+                }
+            }
         } catch (IOException | NullPointerException e) {
             e.printStackTrace();
         }
     }
-
 
     private void FillClients() {
         String[] username = {"Abdul", "Kuze", "Zeyd"};
@@ -165,6 +222,27 @@ public class Server {
             }
         }
         return false;
+    }
+
+    private BufferedReader getStreamReader(int status, HttpURLConnection connection){
+        try {
+            if(status > 299){
+                return new BufferedReader(new InputStreamReader(connection.getErrorStream()));
+            }
+            else
+                return new BufferedReader(new InputStreamReader(connection.getInputStream()));
+        }catch (IOException | NullPointerException e){
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private static String getUrlFromText(String[] lines) {
+        for(String str : lines) {
+            if(Pattern.matches(urlRegex, str))
+                return str;
+        }
+        return null;
     }
 }
 

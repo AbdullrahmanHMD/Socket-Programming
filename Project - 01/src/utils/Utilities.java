@@ -6,12 +6,15 @@ import java.nio.charset.StandardCharsets;
 public class Utilities {
 
     public static final String API_KEY = "MPI3vpMK3K6dxIoNtMSrBSNbcffs5hb4KzCYx0hY";
-    public static final String APOD_BASE_URL = "https://api.nasa.gov/planetary/apod?api_key=" + API_KEY;
+    public static final String APOD_BASE_URL = "https://api.nasa.gov/planetary/apod?api_key=" + API_KEY +"&date=";
+    public static final String INSIGHT_BASE_URL = "https://api.nasa.gov/insight_weather/?api_key="
+            + API_KEY + "&feedtype=json&ver=1.0/";
 
     public static final double AUTH_TOKEN_LENGTH = 0.5;
 
     public static final int PASSWORD_TIMEOUT = 1000;
-    public static final int DEFAULT_PORT = 9999;
+    public static final int AUTH_PORT = 9999;
+    public static final int QUERY_PORT = 9998;
 
     public static final String DEFAULT_SERVER_ADDRESS = "localhost";
 
@@ -29,7 +32,7 @@ public class Utilities {
     public static final byte Query_Phase = 1;
 
     public static final String dateRegex = "[0-9]{4}-[0-1][0-9]-[0-3][0-9]";
-    public static final String urlRegex = "w{3}\\.[A-Za-z0-9_]+\\.\\w{3}";
+    public static final String urlRegex = "https://\\w+\\.\\w+\\.\\w+/apod/image/[0-9]+/\\w+\\.\\w+";
 
     private static final String TOKEN_SUFFIX = "87";
 
@@ -69,9 +72,9 @@ public class Utilities {
     }
 
     public static String serverWelcomeMessage(String username){
-        return "Hello %s, welcome to the StratoNet server" +
+        return "\nHello " + username + ", welcome to the StratoNet server" +
                 "\nYou have access to following queries:" +
                 "\n1) Weather on Mars: Type Weather" +
-                "\n2) For the image of the day: Type the date of the image as follows yyyy-mm-dd";
+                "\n2) For the image of the day: Type the date of the image as follows yyyy-mm-dd\n";
     }
 }
