@@ -54,6 +54,23 @@ public class AuthenticatedConnection {
         return response;
     }
 
+    public TCPPayload readFromServer() {
+        TCPPayload response = null;
+        byte phase;
+        byte type;
+        int size;
+        String msg;
+        try {
+            phase = reader.readByte();
+            type = reader.readByte();
+            size = reader.readInt();
+            msg = new String(reader.readNBytes(size));
+            response = new TCPPayload(phase, type, size, msg);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return response;
+    }
 
     public void TerminateConnection() {
         try {

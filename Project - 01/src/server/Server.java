@@ -8,15 +8,16 @@ import static utils.Utilities.*;
 
 import java.io.*;
 import java.net.*;
-import java.util.Arrays;
 
 public class Server {
 
+    private final String SERVER_TOKEN = "SERVER";
+
     private final ArrayList<Client> clients;
-    private ServerSocket authenticationServerSocket, requestServerSocket;
+    private ServerSocket authenticationServerSocket, queryServerSocket;
     private DataInputStream reader;
     private DataOutputStream writer;
-
+    private String clientUsername;
 
     public Server(int port) {
 
@@ -26,21 +27,29 @@ public class Server {
         try {
             this.authenticationServerSocket = new ServerSocket(port);
             System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
-        } catch (IOException e) {
+        } catch (IOException | NullPointerException e) {
             e.printStackTrace();
 
         }
-        if (Accept()) {
+        if (AuthenticateClient()) {
             System.out.println("AUTHENTICATION COMPLETE");
+
+            try {
+                this.queryServerSocket = new ServerSocket(port);
+                System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
+            } catch (IOException | NullPointerException e) {
+                e.printStackTrace();
+            }
+
         }
     }
 
-    private boolean Accept() {
+    private boolean AuthenticateClient() { // Implement Auth_Fail when client is unresponsive for 10 secs.
         Socket authenticationSocket = null;
         String serverMessage = "";
         String clientResponse = "";
 
-        String username;
+
         String password;
 
         int authAttempts = 0;
@@ -63,14 +72,14 @@ public class Server {
 
             if (!AuthenticateUsername(clientResponse)) {
                 serverMessage = "No such user. Authentication failed";
-                serverResponse = getTCPByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
                 writer.write(serverResponse);
             } else {
-                username = clientResponse;
+                clientUsername = clientResponse;
                 String failedMessage = "";
                 while (authAttempts < 3) {
                     serverMessage = failedMessage + "Enter Your password:";
-                    serverResponse = getTCPByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(), serverMessage);
+                    serverResponse = getRequestByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(), serverMessage);
                     writer.write(serverResponse);
 
                     phase = reader.readByte();
@@ -78,20 +87,20 @@ public class Server {
                     size = reader.readInt();
                     clientResponse = new String(reader.readNBytes(size));
 
-                    if (AuthenticatePassword(username, clientResponse)) {
-                        System.out.println("Bruh moment");
-                        serverMessage = "Client authenticated. Welcome " + username + "!";
-                        serverResponse = getTCPByteArray(Auth_Phase, Auth_Success, serverMessage.length(), serverMessage);
+                    if (AuthenticatePassword(clientUsername, clientResponse)) {
+                        serverMessage = generateToken(clientUsername, (int) (clientUsername.length() * AUTH_TOKEN_LENGTH));
+                        serverResponse = getRequestByteArray(Auth_Phase, Auth_Success, serverMessage.length(), serverMessage);
                         writer.write(serverResponse);
                         return true;
                     } else {
                         authAttempts++;
-                        failedMessage = String.format("Incorrect password | " + (3 - authAttempts) + " attempt%s left | ", authAttempts==1? "s" : "");
+                        failedMessage = String.format("Incorrect password | " + (3 - authAttempts) + " attempt%s left | ", authAttempts == 1 ? "s" : "");
                     }
                 }
                 serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connection";
-                serverResponse = getTCPByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
                 writer.write(serverResponse);
+
                 return false;
             }
         } catch (IOException | NullPointerException e) {
@@ -99,6 +108,37 @@ public class Server {
         }
         return false;
     }
+
+    private void QueryingPhase() {
+
+        Socket querySocket = null;
+        String serverMessage = "";
+        String clientResponse = "";
+        String token = "";
+
+        byte[] serverResponse;
+        byte phase;
+        byte type;
+        int size;
+        try {
+
+            querySocket = queryServerSocket.accept();
+            reader = new DataInputStream(new DataInputStream(querySocket.getInputStream()));
+            writer = new DataOutputStream(new DataOutputStream(querySocket.getOutputStream()));
+            serverMessage = serverWelcomeMessage(clientUsername);
+            serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(), serverMessage);
+
+            phase = reader.readByte();
+            type = reader.readByte();
+            size = reader.readInt();
+            token = new String(reader.readNBytes(size));
+
+
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
+    }
+
 
     private void FillClients() {
         String[] username = {"Abdul", "Kuze", "Zeyd"};
