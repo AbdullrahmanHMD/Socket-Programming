@@ -6,6 +6,8 @@ import java.io.*;
 import java.net.Socket;
 import java.util.Arrays;
 
+import static utils.Utilities.*;
+
 public class AuthenticatedConnection {
 
     private final String serverAddress;
@@ -31,7 +33,7 @@ public class AuthenticatedConnection {
         }
     }
 
-    public TCPPayload SendRequest(byte[] message) {
+    public TCPPayload sendRequest(byte[] message) {
         TCPPayload response = null;
         byte phase;
         byte type;

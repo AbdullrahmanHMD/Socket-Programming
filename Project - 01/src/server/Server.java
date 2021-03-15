@@ -8,11 +8,10 @@ import static utils.Utilities.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.Random;
 import java.util.regex.Pattern;
 
 public class Server {
-
-    private final String SERVER_TOKEN = "SERVER";
 
     private final ArrayList<Client> clients;
     private ServerSocket authenticationServerSocket, queryServerSocket;
@@ -30,11 +29,9 @@ public class Server {
             System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
         } catch (IOException | NullPointerException e) {
             e.printStackTrace();
-
         }
         if (AuthenticateClient()) {
             System.out.println("AUTHENTICATION COMPLETE");
-
             try {
                 this.queryServerSocket = new ServerSocket(QUERY_PORT);
                 System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
@@ -45,20 +42,18 @@ public class Server {
         }
     }
 
-    private boolean AuthenticateClient() { // Implement Auth_Fail when client is unresponsive for 10 secs.
+    private boolean AuthenticateClient() {
         Socket authenticationSocket = null;
         String serverMessage = "";
         String clientResponse = "";
-
-
         String password;
 
         int authAttempts = 0;
-
         byte[] serverResponse;
         byte phase;
         byte type;
         int size;
+
         try {
             authenticationSocket = authenticationServerSocket.accept();
             reader = new DataInputStream(new DataInputStream(authenticationSocket.getInputStream()));
@@ -79,14 +74,32 @@ public class Server {
                 clientUsername = clientResponse;
                 String failedMessage = "";
                 while (authAttempts < 3) {
+
                     serverMessage = failedMessage + "Enter Your password:";
-                    serverResponse = getRequestByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(), serverMessage);
+                    serverResponse = getRequestByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(),
+                            serverMessage);
                     writer.write(serverResponse);
 
-                    phase = reader.readByte();
-                    type = reader.readByte();
-                    size = reader.readInt();
-                    clientResponse = new String(reader.readNBytes(size));
+                    authenticationSocket.setSoTimeout(PASSWORD_TIMEOUT);
+
+                    try{
+                        phase = reader.readByte();
+                        type = reader.readByte();
+                        size = reader.readInt();
+                        clientResponse = new String(reader.readNBytes(size));
+                    }
+                    catch (SocketTimeoutException e){
+                        serverMessage = failedMessage + "Disconnected: Password timeout";
+                        serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                        writer.write(serverResponse);
+
+                        phase = reader.readByte();
+                        type = reader.readByte();
+                        size = reader.readInt();
+                        clientResponse = new String(reader.readNBytes(size));
+
+                        return false;
+                    }
 
                     if (AuthenticatePassword(clientUsername, clientResponse)) {
                         serverMessage = generateToken(clientUsername, (int) (clientUsername.length() * AUTH_TOKEN_LENGTH));
@@ -132,7 +145,7 @@ public class Server {
             reader = new DataInputStream(new DataInputStream(querySocket.getInputStream()));
             writer = new DataOutputStream(new DataOutputStream(querySocket.getOutputStream()));
 
-            serverMessage=serverWelcomeMessage(clientUsername);
+            serverMessage = serverWelcomeMessage(clientUsername);
             serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(), serverMessage);
 
             writer.write(serverResponse);
@@ -163,7 +176,7 @@ public class Server {
                     System.out.println(imageURL);
                     buffredReader.close();
 
-                    serverMessage = imageURL;
+                    serverMessage = imageToByteArray(new URL(imageURL)).toString();
                     serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
                             serverMessage);
 
@@ -185,11 +198,17 @@ public class Server {
                         lines.append(line);
                     }
                     buffredReader.close();
-                    serverMessage = lines.toString();
+                    serverMessage = filteredWeather(lines.toString());
                     serverResponse = getRequestByteArray(Query_Phase, Query_Success,serverMessage.length(),
                             serverMessage);
 
                     writer.write(serverResponse);
+                }
+                else if(type == Query_Exit){
+                    serverMessage = "Disconnected from the server.";
+                    serverResponse = getRequestByteArray(Query_Phase, Query_Exit,serverMessage.length(),
+                            serverMessage);
+                    return;
                 }
             }
         } catch (IOException | NullPointerException e) {
@@ -243,6 +262,46 @@ public class Server {
                 return str;
         }
         return null;
+    }
+
+    private static String filteredWeather(String weather){
+        ArrayList<String> weatherList = new ArrayList<>();
+        Random rand = new Random();
+
+        String[] weatherText = weather.split("},");
+        for(String str : weatherText) {
+            if(str.contains("\"PRE\": {") && !str.contains("["))
+                weatherList.add(str.substring(str.indexOf("\"PRE\"")).replaceAll("\"PRE\": \\{\\s{5}",
+                        "").replaceAll("\"", ""));
+        }
+
+        int randomIndex = rand.nextInt(weatherList.size());
+        return weatherList.get(randomIndex);
+    }
+    private static byte[] imageToByteArray(URL url) {
+        try {
+            InputStream inputStream = new BufferedInputStream(url.openStream());
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+            byte[] byteArray = new byte[1024];
+            int n = 0;
+
+            while ((n = inputStream.read(byteArray)) != -1){
+                outputStream.write(byteArray, 0, n);
+            }
+            outputStream.close();
+            inputStream.close();
+            return outputStream.toByteArray();}
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    public static String serverWelcomeMessage(String username){
+        return "\nHello " + username + ", welcome to the StratoNet server" +
+                "\nYou have access to following queries:" +
+                "\n1) Weather on Mars: Type \"Weather\"" +
+                "\n2) For the image of the day: Type the date of an image as follows: yyyy-mm-dd\n";
     }
 }
 

@@ -12,7 +12,7 @@ public class Utilities {
 
     public static final double AUTH_TOKEN_LENGTH = 0.5;
 
-    public static final int PASSWORD_TIMEOUT = 1000;
+    public static final int PASSWORD_TIMEOUT = 7000;
     public static final int AUTH_PORT = 9999;
     public static final int QUERY_PORT = 9998;
 
@@ -25,8 +25,9 @@ public class Utilities {
 
     public static final byte Query_Image = 4;
     public static final byte Query_Weather = 5;
-    public static final byte Query_Fail = 6;
-    public static final byte Query_Success = 7;
+    public static final byte Query_Success = 6; // Was 7.
+
+    public static final byte Query_Exit = -1;
 
     public static final byte Auth_Phase = 0;
     public static final byte Query_Phase = 1;
@@ -71,10 +72,4 @@ public class Utilities {
         return token.substring(0, endIndex).replaceAll("\\s", "");
     }
 
-    public static String serverWelcomeMessage(String username){
-        return "\nHello " + username + ", welcome to the StratoNet server" +
-                "\nYou have access to following queries:" +
-                "\n1) Weather on Mars: Type Weather" +
-                "\n2) For the image of the day: Type the date of the image as follows yyyy-mm-dd\n";
-    }
 }
