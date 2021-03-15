@@ -65,8 +65,6 @@ public class ClientMain {
             System.out.println("Authentication complete!");
             accessToken = serverResponse.getMessage();
             System.out.println("Access Token Generated | Your access token is: " + accessToken);
-
-            connectionToServer.TerminateConnection();
             return true;
         }
         return false;
@@ -103,6 +101,7 @@ public class ClientMain {
                 System.out.println("Image downloaded!");
 
             } else if (query == Query_Weather) {
+                System.out.println("Fetching weather state...");
                 clientResponse = getRequestByteArray(Query_Phase, query, accessToken.length(), accessToken);
                 serverResponse = connectionToServer.sendRequest(clientResponse);
 

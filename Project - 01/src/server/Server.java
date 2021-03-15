@@ -80,6 +80,9 @@ public class Server {
                 serverMessage = "No such user. Authentication failed";
                 serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
                 writer.write(serverResponse);
+                printDisconnectionMessage(Integer.toString(authenticationSocket.getPort()),
+                        authenticationSocket.getInetAddress().toString(),"No such user. Authentication failed",
+                        true);
             } else {
                 clientUsername = clientResponse;
                 String failedMessage = "";
@@ -107,7 +110,8 @@ public class Server {
                         type = reader.readByte();
                         size = reader.readInt();
                         clientResponse = new String(reader.readNBytes(size));
-
+                        printDisconnectionMessage(Integer.toString(authenticationSocket.getPort()),
+                                authenticationSocket.getInetAddress().toString(),"Password timeout",true);
                         return false;
                     }
 
@@ -138,6 +142,10 @@ public class Server {
                 serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connection";
                 serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
                 writer.write(serverResponse);
+
+                printDisconnectionMessage(Integer.toString(authenticationSocket.getPort()),
+                        authenticationSocket.getInetAddress().toString(),"Too many failed attempt to connect",
+                        true);
 
                 return false;
             }
@@ -180,16 +188,18 @@ public class Server {
                 size = reader.readInt();
                 token = new String(reader.readNBytes(size));
 
-                if (!verifyToken(token, querySocket)) {
+                if (!verifyToken(token, authenticationSocket)) {
                     serverMessage = "INVALID TOKEN, Disconnecting from server...";
                     serverResponse = getRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
                             serverMessage);
 
                     writer.write(serverResponse);
+                    printDisconnectionMessage(tokenMap.get(token)[0], tokenMap.get(token)[1], "Invalid token",
+                            true);
+                    return;
                 }
 
                 if (type == Query_Image) {
-
                     apodURL = new URL(APOD_BASE_URL + token);
                     apiConnection = (HttpURLConnection) apodURL.openConnection();
                     apiConnection.setRequestMethod("GET");
@@ -204,7 +214,7 @@ public class Server {
                         lines.append(line);
                     }
                     String imageURL = getUrlFromText(lines.toString().split("\""));
-                    System.out.println(imageURL);
+
                     buffredReader.close();
                     byte[] imageByteArray = imageToByteArray(new URL(imageURL));
                     serverResponse = queryMessage(Query_Phase, Query_Success, imageByteArray.length,
@@ -232,10 +242,16 @@ public class Server {
                             serverMessage);
 
                     writer.write(serverResponse);
+
                 } else if (type == Query_Exit) {
                     serverMessage = "Disconnected from the server.";
                     serverResponse = getRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
                             serverMessage);
+                    writer.write(serverResponse);
+
+                    printDisconnectionMessage(tokenMap.get(token)[0], tokenMap.get(token)[1], "Client request",
+                            false);
+
                     return;
                 }
             }
@@ -291,13 +307,12 @@ public class Server {
         return "\n-------------------------------------------------------------------------------------------------" +
                 "\n|\t\t\t=== Hello " + username + ", welcome to the StratoNet server! ==="+
                 "\n-------------------------------------------------------------------------------------------------" +
-                "\nYou have access to following queries:" +
-                "\n1) To get the weather on Mars type \"Weather\"" +
-                "\n2) To get the image of the day type the date of an image as follows: yyyy-mm-dd" +
-                "\n3) To disconnect from the server simply type \"disconnect\"" +
+                "\n| You have access to following queries:" +
+                "\n| 1) To get the weather on Mars type \"Weather\"" +
+                "\n| 2) To get the image of the day type the date of an image as follows: yyyy-mm-dd" +
+                "\n| 3) To disconnect from the server simply type \"disconnect\"" +
                 "\n-------------------------------------------------------------------------------------------------";
     }
-
 
     private void FillClients() {
         String[] username = {"Abdul", "Kuze", "Zeyd"};
@@ -347,6 +362,14 @@ public class Server {
 
         return clientPort.equals(port) && clientIP.equals(IP);
     }
+
+    private void printDisconnectionMessage(String port, String IP, String reason, boolean isError){
+        if(isError) {
+            System.err.println("Client with port number: " + port + " and IP: "
+                    + IP + " has disconnected from the server\nReason: " + reason + ".");
+        }else {
+            System.err.println("Client with port number: " + port + " and IP: "
+                    + IP + " has disconnected from the server\nReason: " + reason + ".");
+        }
+    }
 }
-
-

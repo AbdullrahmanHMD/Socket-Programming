@@ -79,7 +79,6 @@ public class AuthenticatedConnection {
         return response;
     }
 
-
     public TCPPayload readFromServer() {
         TCPPayload response = null;
         byte phase;
