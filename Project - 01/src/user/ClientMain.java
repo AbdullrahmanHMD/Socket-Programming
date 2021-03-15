@@ -17,14 +17,14 @@ public class ClientMain {
     private static String accessToken;
 
     public static void main(String[] args) {
-        if (!InitializeConnection())
+        if (!InitializeAuthentication())
             System.err.println("Failed to connect to server.");
         else {
             InitializeQuerying();
         }
     }
 
-    private static boolean InitializeConnection() {
+    private static boolean InitializeAuthentication() {
 
         TCPPayload serverResponse;
         byte[] clientResponse;
@@ -65,6 +65,7 @@ public class ClientMain {
             System.out.println("Authentication complete!");
             accessToken = serverResponse.getMessage();
             System.out.println("Access Token Generated | Your access token is: " + accessToken);
+
             connectionToServer.TerminateConnection();
             return true;
         }
@@ -72,9 +73,9 @@ public class ClientMain {
     }
 
     private static void InitializeQuerying() {
-        TCPPayload serverResponse;
-        byte[] clientResponse;
-        String clientMessage;
+        TCPPayload serverResponse = null;
+        byte[] clientResponse = null;
+        String clientMessage = null;
         byte query = 0;
         AuthenticatedConnection connectionToServer =
                 new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, QUERY_PORT);
@@ -84,40 +85,41 @@ public class ClientMain {
 
         Scanner reader = new Scanner(System.in);
         clientMessage = reader.nextLine();
-
-        while (query != Query_Exit) {
-            query = getQuery(clientMessage);
-
+        query = getQuery(clientMessage);
+        while (true) {
             while (query == 0) {
                 System.err.println("Invalid query, try again");
+
                 clientMessage = reader.nextLine();
                 query = getQuery(clientMessage);
             }
-            if(query == Query_Image){
-                clientResponse = getRequestByteArray(Query_Phase, query, clientMessage.length(), clientMessage);
+            if (query == Query_Image) {
+
+                clientResponse = getRequestByteArray(Query_Phase, query, accessToken.length(), accessToken);
+                serverResponse = connectionToServer.sendImageRequest(clientResponse);
+
+                System.out.println("Fetching image...");
+                createImage(serverResponse.getByteMessage());
+                System.out.println("Image downloaded!");
+
+            } else if (query == Query_Weather) {
+                clientResponse = getRequestByteArray(Query_Phase, query, accessToken.length(), accessToken);
                 serverResponse = connectionToServer.sendRequest(clientResponse);
 
-                createImage(serverResponse.getMessage().getBytes());
-                System.out.println("Image received");
-            }
-            else if(query == Query_Weather){
-                clientResponse = getRequestByteArray(Query_Phase, query, clientMessage.length(), clientMessage);
+                System.out.println(serverResponse.getMessage());
+            } else if (query == Query_Exit) {
+                clientResponse = getRequestByteArray(Query_Phase, query, accessToken.length(), accessToken);
                 serverResponse = connectionToServer.sendRequest(clientResponse);
 
-                System.out.println(serverResponse.getMessage() + "\n");
+                System.err.println(serverResponse.getMessage());
+                connectionToServer.TerminateConnection();
+                return;
             }
-
             System.out.println("Enter a request:");
             clientMessage = reader.nextLine();
-
+            query = getQuery(clientMessage);
         }
-        clientMessage = "Disconnect";
-        clientResponse = getRequestByteArray(Query_Phase, Query_Exit, clientMessage.length(), clientMessage);
-        serverResponse = connectionToServer.sendRequest(clientResponse);
-        System.out.println(serverResponse.getMessage());
-        connectionToServer.TerminateConnection();
     }
-
 
     private static byte getQuery(String message) {
         if (Pattern.compile(dateRegex).matcher(message).matches())
@@ -134,7 +136,7 @@ public class ClientMain {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(byteArray);
             BufferedImage byteImage = ImageIO.read(inputStream);
 
-            ImageIO.write(byteImage, "jpg", new File("image_of_the_day.jpg"));
+            ImageIO.write(byteImage, IMAGE_FORMAT, new File(DEFAULT_IMAGE_PATH + IMAGE_FORMAT));
 
         } catch (NullPointerException | IOException e) {
             e.printStackTrace();

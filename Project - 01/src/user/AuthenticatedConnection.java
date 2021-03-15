@@ -56,6 +56,30 @@ public class AuthenticatedConnection {
         return response;
     }
 
+    public TCPPayload sendImageRequest(byte[] message) {
+        TCPPayload response = null;
+        byte phase;
+        byte type;
+        int size;
+        byte[] msg;
+
+        try {
+            writer.write(message);
+
+            phase = reader.readByte();
+            type = reader.readByte();
+            size = reader.readInt();
+            msg = reader.readNBytes(size);
+
+            response = new TCPPayload(phase, type, size, msg);
+
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
+        return response;
+    }
+
+
     public TCPPayload readFromServer() {
         TCPPayload response = null;
         byte phase;

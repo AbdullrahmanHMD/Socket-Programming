@@ -8,6 +8,7 @@ import static utils.Utilities.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.HashMap;
 import java.util.Random;
 import java.util.regex.Pattern;
 
@@ -17,11 +18,20 @@ public class Server {
     private ServerSocket authenticationServerSocket, queryServerSocket;
     private DataInputStream reader;
     private DataOutputStream writer;
+
     private String clientUsername;
+    private InetAddress clientIP;
+    private int clientPort;
+    private String clientToken;
+
+    private HashMap<String, String[]> tokenMap;
+
+    private Socket authenticationSocket;
+
 
     public Server(int port) {
-
         clients = new ArrayList<Client>();
+        tokenMap = new HashMap<>();
         FillClients();
 
         try {
@@ -31,7 +41,7 @@ public class Server {
             e.printStackTrace();
         }
         if (AuthenticateClient()) {
-            System.out.println("AUTHENTICATION COMPLETE");
+            System.out.println("Authentication Complete!");
             try {
                 this.queryServerSocket = new ServerSocket(QUERY_PORT);
                 System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
@@ -43,7 +53,6 @@ public class Server {
     }
 
     private boolean AuthenticateClient() {
-        Socket authenticationSocket = null;
         String serverMessage = "";
         String clientResponse = "";
         String password;
@@ -56,6 +65,7 @@ public class Server {
 
         try {
             authenticationSocket = authenticationServerSocket.accept();
+
             reader = new DataInputStream(new DataInputStream(authenticationSocket.getInputStream()));
             writer = new DataOutputStream(new DataOutputStream(authenticationSocket.getOutputStream()));
 
@@ -82,15 +92,15 @@ public class Server {
 
                     authenticationSocket.setSoTimeout(PASSWORD_TIMEOUT);
 
-                    try{
+                    try {
                         phase = reader.readByte();
                         type = reader.readByte();
                         size = reader.readInt();
                         clientResponse = new String(reader.readNBytes(size));
-                    }
-                    catch (SocketTimeoutException e){
+                    } catch (SocketTimeoutException e) {
                         serverMessage = failedMessage + "Disconnected: Password timeout";
-                        serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                        serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(),
+                                serverMessage);
                         writer.write(serverResponse);
 
                         phase = reader.readByte();
@@ -102,13 +112,27 @@ public class Server {
                     }
 
                     if (AuthenticatePassword(clientUsername, clientResponse)) {
-                        serverMessage = generateToken(clientUsername, (int) (clientUsername.length() * AUTH_TOKEN_LENGTH));
-                        serverResponse = getRequestByteArray(Auth_Phase, Auth_Success, serverMessage.length(), serverMessage);
+
+                        serverMessage = generateToken(clientUsername,
+                                (int) (clientUsername.length() * AUTH_TOKEN_LENGTH));
+
+                        serverResponse = getRequestByteArray(Auth_Phase, Auth_Success, serverMessage.length(),
+                                serverMessage);
+
+                        clientToken = serverMessage;
+                        clientPort = authenticationSocket.getPort();
+                        clientIP = authenticationSocket.getInetAddress();
+
+                        String[] clientInfo = {Integer.toString(clientPort), clientIP.toString()};
+                        tokenMap.put(clientToken, clientInfo);
+
                         writer.write(serverResponse);
+
                         return true;
                     } else {
                         authAttempts++;
-                        failedMessage = String.format("Incorrect password | " + (3 - authAttempts) + " attempt%s left | ", authAttempts == 1 ? "s" : "");
+                        failedMessage = String.format("Incorrect password | " + (3 - authAttempts)
+                                + " attempt%s left | ", authAttempts == 1 ? "s" : "");
                     }
                 }
                 serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connection";
@@ -150,14 +174,21 @@ public class Server {
 
             writer.write(serverResponse);
 
-            while(true){
-
+            while (true) {
                 phase = reader.readByte();
                 type = reader.readByte();
                 size = reader.readInt();
                 token = new String(reader.readNBytes(size));
 
-                if(type == Query_Image){
+                if (!verifyToken(token, querySocket)) {
+                    serverMessage = "INVALID TOKEN, Disconnecting from server...";
+                    serverResponse = getRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
+                            serverMessage);
+
+                    writer.write(serverResponse);
+                }
+
+                if (type == Query_Image) {
 
                     apodURL = new URL(APOD_BASE_URL + token);
                     apiConnection = (HttpURLConnection) apodURL.openConnection();
@@ -169,20 +200,18 @@ public class Server {
 
                     BufferedReader buffredReader = getStreamReader(status, apiConnection);
 
-                    while((line = buffredReader.readLine()) != null){
-                            lines.append(line);
+                    while ((line = buffredReader.readLine()) != null) {
+                        lines.append(line);
                     }
                     String imageURL = getUrlFromText(lines.toString().split("\""));
                     System.out.println(imageURL);
                     buffredReader.close();
-
-                    serverMessage = imageToByteArray(new URL(imageURL)).toString();
-                    serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
-                            serverMessage);
+                    byte[] imageByteArray = imageToByteArray(new URL(imageURL));
+                    serverResponse = queryMessage(Query_Phase, Query_Success, imageByteArray.length,
+                            imageByteArray);
 
                     writer.write(serverResponse);
-                }
-                else if(type == Query_Weather){
+                } else if (type == Query_Weather) {
                     weatherURL = new URL(INSIGHT_BASE_URL);
 
                     apiConnection = (HttpURLConnection) weatherURL.openConnection();
@@ -194,19 +223,18 @@ public class Server {
 
                     BufferedReader buffredReader = getStreamReader(status, apiConnection);
 
-                    while((line = buffredReader.readLine()) != null){
+                    while ((line = buffredReader.readLine()) != null) {
                         lines.append(line);
                     }
                     buffredReader.close();
                     serverMessage = filteredWeather(lines.toString());
-                    serverResponse = getRequestByteArray(Query_Phase, Query_Success,serverMessage.length(),
+                    serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
                             serverMessage);
 
                     writer.write(serverResponse);
-                }
-                else if(type == Query_Exit){
+                } else if (type == Query_Exit) {
                     serverMessage = "Disconnected from the server.";
-                    serverResponse = getRequestByteArray(Query_Phase, Query_Exit,serverMessage.length(),
+                    serverResponse = getRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
                             serverMessage);
                     return;
                 }
@@ -215,6 +243,61 @@ public class Server {
             e.printStackTrace();
         }
     }
+
+    private static String getUrlFromText(String[] lines) {
+        for (String str : lines) {
+            if (Pattern.matches(urlRegex, str))
+                return str;
+        }
+        return null;
+    }
+
+    private static String filteredWeather(String weather) {
+        ArrayList<String> weatherList = new ArrayList<>();
+        Random rand = new Random();
+
+        String[] weatherText = weather.split("},");
+        for (String str : weatherText) {
+            if (str.contains("\"PRE\": {") && !str.contains("["))
+                weatherList.add(str.substring(str.indexOf("\"PRE\"")).replaceAll("\"PRE\": \\{\\s{5}",
+                        "").replaceAll("\"", ""));
+        }
+
+        int randomIndex = rand.nextInt(weatherList.size());
+        return weatherList.get(randomIndex);
+    }
+
+    private static byte[] imageToByteArray(URL url) {
+        try {
+            InputStream inputStream = new BufferedInputStream(url.openStream());
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+            byte[] byteArray = new byte[1024];
+            int n = 0;
+
+            while ((n = inputStream.read(byteArray)) != -1) {
+                outputStream.write(byteArray, 0, n);
+            }
+            outputStream.close();
+            inputStream.close();
+            return outputStream.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public static String serverWelcomeMessage(String username) {
+        return "\n-------------------------------------------------------------------------------------------------" +
+                "\n|\t\t\t=== Hello " + username + ", welcome to the StratoNet server! ==="+
+                "\n-------------------------------------------------------------------------------------------------" +
+                "\nYou have access to following queries:" +
+                "\n1) To get the weather on Mars type \"Weather\"" +
+                "\n2) To get the image of the day type the date of an image as follows: yyyy-mm-dd" +
+                "\n3) To disconnect from the server simply type \"disconnect\"" +
+                "\n-------------------------------------------------------------------------------------------------";
+    }
+
 
     private void FillClients() {
         String[] username = {"Abdul", "Kuze", "Zeyd"};
@@ -243,67 +326,27 @@ public class Server {
         return false;
     }
 
-    private BufferedReader getStreamReader(int status, HttpURLConnection connection){
+    private BufferedReader getStreamReader(int status, HttpURLConnection connection) {
         try {
-            if(status > 299){
+            if (status > 299) {
                 return new BufferedReader(new InputStreamReader(connection.getErrorStream()));
-            }
-            else
+            } else
                 return new BufferedReader(new InputStreamReader(connection.getInputStream()));
-        }catch (IOException | NullPointerException e){
+        } catch (IOException | NullPointerException e) {
             e.printStackTrace();
             return null;
         }
     }
 
-    private static String getUrlFromText(String[] lines) {
-        for(String str : lines) {
-            if(Pattern.matches(urlRegex, str))
-                return str;
-        }
-        return null;
-    }
+    private boolean verifyToken(String token, Socket socket) {
+        String clientPort = tokenMap.get(token)[0];
+        String clientIP = tokenMap.get(token)[1];
 
-    private static String filteredWeather(String weather){
-        ArrayList<String> weatherList = new ArrayList<>();
-        Random rand = new Random();
+        String port = Integer.toString(socket.getPort());
+        String IP = socket.getInetAddress().toString();
 
-        String[] weatherText = weather.split("},");
-        for(String str : weatherText) {
-            if(str.contains("\"PRE\": {") && !str.contains("["))
-                weatherList.add(str.substring(str.indexOf("\"PRE\"")).replaceAll("\"PRE\": \\{\\s{5}",
-                        "").replaceAll("\"", ""));
-        }
-
-        int randomIndex = rand.nextInt(weatherList.size());
-        return weatherList.get(randomIndex);
-    }
-    private static byte[] imageToByteArray(URL url) {
-        try {
-            InputStream inputStream = new BufferedInputStream(url.openStream());
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-
-            byte[] byteArray = new byte[1024];
-            int n = 0;
-
-            while ((n = inputStream.read(byteArray)) != -1){
-                outputStream.write(byteArray, 0, n);
-            }
-            outputStream.close();
-            inputStream.close();
-            return outputStream.toByteArray();}
-        catch (Exception e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-    public static String serverWelcomeMessage(String username){
-        return "\nHello " + username + ", welcome to the StratoNet server" +
-                "\nYou have access to following queries:" +
-                "\n1) Weather on Mars: Type \"Weather\"" +
-                "\n2) For the image of the day: Type the date of an image as follows: yyyy-mm-dd\n";
+        return clientPort.equals(port) && clientIP.equals(IP);
     }
 }
-
 
 

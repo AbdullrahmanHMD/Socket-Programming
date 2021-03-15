@@ -37,6 +37,10 @@ public class Utilities {
 
     private static final String TOKEN_SUFFIX = "87";
 
+
+    public static final String DEFAULT_IMAGE_PATH = "image_of_the_day.jpg";
+    public static final String IMAGE_FORMAT = "jpg";
+
     public static byte[] getRequestByteArray(byte phase, byte type, int size, String payload) {
 
         byte[] stringToByte = payload.getBytes(StandardCharsets.UTF_8);
@@ -59,6 +63,25 @@ public class Utilities {
         return tcpPayload;
     }
 
+    public static byte[] queryMessage(byte phase, byte type, int size, byte[] payload) {
+
+        int tcpPayloadSize = 1 + 1 + 4 + payload.length;
+        byte[] tcpPayload = new byte[tcpPayloadSize];
+
+        tcpPayload[0] = phase;
+        tcpPayload[1] = type;
+
+        byte[] byteToInt = ByteBuffer.allocate(4).putInt(size).array();
+
+        for (int i = 0; i < byteToInt.length; i++) {
+            tcpPayload[i + 2] = byteToInt[i];
+        }
+
+        for (int i = 0; i < payload.length; i++) {
+            tcpPayload[i + 6] = payload[i];
+        }
+        return tcpPayload;
+    }
 
     /**
      * Given a username and an endIndex, returns a string that consists of the username concatenated with the
