@@ -1,5 +1,7 @@
 package utils;
-
+/**
+ * An object to hold the query information,
+ */
 public class TCPPayload {
 
     private byte phase, type;

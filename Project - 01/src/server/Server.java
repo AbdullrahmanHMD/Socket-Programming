@@ -1,6 +1,7 @@
 package server;
 
 import user.Client;
+import utils.QueryTCPPayload;
 
 import java.util.ArrayList;
 
@@ -8,258 +9,44 @@ import static utils.Utilities.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.regex.Pattern;
 
-public class Server {
+public class Server extends Thread {
 
     private final ArrayList<Client> clients;
-    private ServerSocket authenticationServerSocket, queryServerSocket;
-    private DataInputStream reader;
-    private DataOutputStream writer;
-
+    private final HashMap<String, String[]> tokenMap;
+    private final Socket commandSocket;
+    private final Socket fileSocket;
+    private ServerSocket commandServerSocket;
+    private ServerSocket fileServerSocket;
+    private DataInputStream commandReader;
+    private DataOutputStream commandWriter;
+    private DataInputStream fileReader;
+    private DataOutputStream fileWriter;
     private String clientUsername;
     private InetAddress clientIP;
     private int clientPort;
     private String clientToken;
+    private int port;
 
-    private HashMap<String, String[]> tokenMap;
-
-    private Socket authenticationSocket;
-
-
-    public Server(int port) {
+    public Server(Socket commandSocket, Socket fileSocket) {
         clients = new ArrayList<Client>();
         tokenMap = new HashMap<>();
-        FillClients();
 
-        try {
-            this.authenticationServerSocket = new ServerSocket(port);
-            System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
-        } catch (IOException | NullPointerException e) {
-            e.printStackTrace();
-        }
-        if (AuthenticateClient()) {
-            System.out.println("Authentication Complete!");
-            try {
-                this.queryServerSocket = new ServerSocket(QUERY_PORT);
-                System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
-                QueryingPhase();
-            } catch (IOException | NullPointerException e) {
-                e.printStackTrace();
-            }
-        }
+        this.commandSocket = commandSocket;
+        this.fileSocket = fileSocket;
+
     }
 
-    private boolean AuthenticateClient() {
-        String serverMessage = "";
-        String clientResponse = "";
-        String password;
-
-        int authAttempts = 0;
-        byte[] serverResponse;
-        byte phase;
-        byte type;
-        int size;
-
-        try {
-            authenticationSocket = authenticationServerSocket.accept();
-
-            reader = new DataInputStream(new DataInputStream(authenticationSocket.getInputStream()));
-            writer = new DataOutputStream(new DataOutputStream(authenticationSocket.getOutputStream()));
-
-            System.out.println("Client request accepted" + authenticationSocket.getRemoteSocketAddress());
-
-            phase = reader.readByte();
-            type = reader.readByte();
-            size = reader.readInt();
-            clientResponse = new String(reader.readNBytes(size));
-
-            if (!AuthenticateUsername(clientResponse)) {
-                serverMessage = "No such user. Authentication failed";
-                serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
-                writer.write(serverResponse);
-                printDisconnectionMessage(Integer.toString(authenticationSocket.getPort()),
-                        authenticationSocket.getInetAddress().toString(),"No such user. Authentication failed",
-                        true);
-            } else {
-                clientUsername = clientResponse;
-                String failedMessage = "";
-                while (authAttempts < 3) {
-
-                    serverMessage = failedMessage + "Enter Your password:";
-                    serverResponse = getRequestByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(),
-                            serverMessage);
-                    writer.write(serverResponse);
-
-                    authenticationSocket.setSoTimeout(PASSWORD_TIMEOUT);
-
-                    try {
-                        phase = reader.readByte();
-                        type = reader.readByte();
-                        size = reader.readInt();
-                        clientResponse = new String(reader.readNBytes(size));
-                    } catch (SocketTimeoutException e) {
-                        serverMessage = failedMessage + "Disconnected: Password timeout";
-                        serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(),
-                                serverMessage);
-                        writer.write(serverResponse);
-
-                        phase = reader.readByte();
-                        type = reader.readByte();
-                        size = reader.readInt();
-                        clientResponse = new String(reader.readNBytes(size));
-                        printDisconnectionMessage(Integer.toString(authenticationSocket.getPort()),
-                                authenticationSocket.getInetAddress().toString(),"Password timeout",true);
-                        return false;
-                    }
-
-                    if (AuthenticatePassword(clientUsername, clientResponse)) {
-
-                        serverMessage = generateToken(clientUsername,
-                                (int) (clientUsername.length() * AUTH_TOKEN_LENGTH));
-
-                        serverResponse = getRequestByteArray(Auth_Phase, Auth_Success, serverMessage.length(),
-                                serverMessage);
-
-                        clientToken = serverMessage;
-                        clientPort = authenticationSocket.getPort();
-                        clientIP = authenticationSocket.getInetAddress();
-
-                        String[] clientInfo = {Integer.toString(clientPort), clientIP.toString()};
-                        tokenMap.put(clientToken, clientInfo);
-
-                        writer.write(serverResponse);
-
-                        return true;
-                    } else {
-                        authAttempts++;
-                        failedMessage = String.format("Incorrect password | " + (3 - authAttempts)
-                                + " attempt%s left | ", authAttempts == 1 ? "s" : "");
-                    }
-                }
-                serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connection";
-                serverResponse = getRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
-                writer.write(serverResponse);
-
-                printDisconnectionMessage(Integer.toString(authenticationSocket.getPort()),
-                        authenticationSocket.getInetAddress().toString(),"Too many failed attempt to connect",
-                        true);
-
-                return false;
-            }
-        } catch (IOException | NullPointerException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    private void QueryingPhase() {
-
-        URL weatherURL;
-        URL apodURL;
-
-        HttpURLConnection apiConnection;
-
-        Socket querySocket = null;
-        String serverMessage = "";
-        String clientResponse = "";
-        String token = "";
-
-        byte[] serverResponse;
-        byte phase;
-        byte type;
-        int size;
-        try {
-            querySocket = queryServerSocket.accept();
-
-            reader = new DataInputStream(new DataInputStream(querySocket.getInputStream()));
-            writer = new DataOutputStream(new DataOutputStream(querySocket.getOutputStream()));
-
-            serverMessage = serverWelcomeMessage(clientUsername);
-            serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(), serverMessage);
-
-            writer.write(serverResponse);
-
-            while (true) {
-                phase = reader.readByte();
-                type = reader.readByte();
-                size = reader.readInt();
-                token = new String(reader.readNBytes(size));
-
-                if (!verifyToken(token, authenticationSocket)) {
-                    serverMessage = "INVALID TOKEN, Disconnecting from server...";
-                    serverResponse = getRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
-                            serverMessage);
-
-                    writer.write(serverResponse);
-                    printDisconnectionMessage(tokenMap.get(token)[0], tokenMap.get(token)[1], "Invalid token",
-                            true);
-                    return;
-                }
-
-                if (type == Query_Image) {
-                    apodURL = new URL(APOD_BASE_URL + token);
-                    apiConnection = (HttpURLConnection) apodURL.openConnection();
-                    apiConnection.setRequestMethod("GET");
-                    int status = apiConnection.getResponseCode();
-
-                    String line = "";
-                    StringBuilder lines = new StringBuilder();
-
-                    BufferedReader buffredReader = getStreamReader(status, apiConnection);
-
-                    while ((line = buffredReader.readLine()) != null) {
-                        lines.append(line);
-                    }
-                    String imageURL = getUrlFromText(lines.toString().split("\""));
-
-                    buffredReader.close();
-                    byte[] imageByteArray = imageToByteArray(new URL(imageURL));
-                    serverResponse = queryMessage(Query_Phase, Query_Success, imageByteArray.length,
-                            imageByteArray);
-
-                    writer.write(serverResponse);
-                } else if (type == Query_Weather) {
-                    weatherURL = new URL(INSIGHT_BASE_URL);
-
-                    apiConnection = (HttpURLConnection) weatherURL.openConnection();
-                    apiConnection.setRequestMethod("GET");
-                    int status = apiConnection.getResponseCode();
-
-                    String line = "";
-                    StringBuilder lines = new StringBuilder();
-
-                    BufferedReader buffredReader = getStreamReader(status, apiConnection);
-
-                    while ((line = buffredReader.readLine()) != null) {
-                        lines.append(line);
-                    }
-                    buffredReader.close();
-                    serverMessage = filteredWeather(lines.toString());
-                    serverResponse = getRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
-                            serverMessage);
-
-                    writer.write(serverResponse);
-
-                } else if (type == Query_Exit) {
-                    serverMessage = "Disconnected from the server.";
-                    serverResponse = getRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
-                            serverMessage);
-                    writer.write(serverResponse);
-
-                    printDisconnectionMessage(tokenMap.get(token)[0], tokenMap.get(token)[1], "Client request",
-                            false);
-
-                    return;
-                }
-            }
-        } catch (IOException | NullPointerException e) {
-            e.printStackTrace();
-        }
-    }
-
+    /**
+     * Given a String array, finds the url is this string array and returns it.
+     *
+     * @param lines the String array to be searched for a url.
+     * @return a url retrieved from a String array.
+     */
     private static String getUrlFromText(String[] lines) {
         for (String str : lines) {
             if (Pattern.matches(urlRegex, str))
@@ -268,6 +55,13 @@ public class Server {
         return null;
     }
 
+    /**
+     * Given a parsed JSON object, finds the weather information related to the pressure and adds them to an ArrayList,
+     * then pick a random entry from the constructed ArrayList and returns it.
+     *
+     * @param weather a parsed JSON string containing information about the weather on Mars.
+     * @return a randomly picked information about the weather on Mars.
+     */
     private static String filteredWeather(String weather) {
         ArrayList<String> weatherList = new ArrayList<>();
         Random rand = new Random();
@@ -283,6 +77,12 @@ public class Server {
         return weatherList.get(randomIndex);
     }
 
+    /**
+     * Creates a byte array that consists of an image retrieved from a given url.
+     *
+     * @param url the url to get the image from.
+     * @return return a byte array containing the bytes that make up an image retrieved from a url.
+     */
     private static byte[] imageToByteArray(URL url) {
         try {
             InputStream inputStream = new BufferedInputStream(url.openStream());
@@ -303,15 +103,295 @@ public class Server {
         return null;
     }
 
+    /**
+     * Creates a String as a welcoming message and an instruction menu.
+     *
+     * @param username the username of the client to include in the welcoming message.
+     * @return returns a String as a welcoming message and an instruction menu.
+     */
     public static String serverWelcomeMessage(String username) {
         return "\n-------------------------------------------------------------------------------------------------" +
-                "\n|\t\t\t=== Hello " + username + ", welcome to the StratoNet server! ==="+
+                "\n|\t\t\t=== Hello " + username + ", welcome to the StratoNet server! ===" +
                 "\n-------------------------------------------------------------------------------------------------" +
                 "\n| You have access to following queries:" +
                 "\n| 1) To get the weather on Mars type \"Weather\"" +
                 "\n| 2) To get the image of the day type the date of an image as follows: yyyy-mm-dd" +
                 "\n| 3) To disconnect from the server simply type \"disconnect\"" +
                 "\n-------------------------------------------------------------------------------------------------";
+    }
+
+    public void run() {
+        FillClients();
+        try {
+            System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
+        if (AuthenticateClient()) {
+            System.out.println("Authentication Complete!");
+            try {
+                System.out.println("Server socket successfully opened at: " + Inet4Address.getLocalHost());
+                QueryingPhase();
+            } catch (IOException | NullPointerException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * Initializes the authentication phase.
+     *
+     * @return true if the authentication is successful and false otherwise.
+     */
+    private boolean AuthenticateClient() {
+        String serverMessage = "";
+        String clientResponse = "";
+        String password;
+
+        int authAttempts = 0;
+        byte[] serverResponse;
+        byte phase;
+        byte type;
+        int size;
+
+        try {
+
+            commandReader = new DataInputStream(new DataInputStream(commandSocket.getInputStream()));
+            commandWriter = new DataOutputStream(new DataOutputStream(commandSocket.getOutputStream()));
+
+            System.out.println("Client request accepted" + commandSocket.getRemoteSocketAddress());
+
+            phase = commandReader.readByte();
+            type = commandReader.readByte();
+            size = commandReader.readInt();
+            clientResponse = new String(commandReader.readNBytes(size));
+
+            if (!AuthenticateUsername(clientResponse)) {
+                serverMessage = "No such user. Authentication failed";
+                serverResponse = getAuthRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                commandWriter.write(serverResponse);
+                printDisconnectionMessage(Integer.toString(commandSocket.getPort()),
+                        commandSocket.getInetAddress().toString(), "No such user. Authentication failed",
+                        true);
+            } else {
+                clientUsername = clientResponse;
+                String failedMessage = "";
+                while (authAttempts < 3) {
+
+                    serverMessage = failedMessage + "Enter Your password:";
+                    serverResponse = getAuthRequestByteArray(Auth_Phase, Auth_Challenge, serverMessage.length(),
+                            serverMessage);
+                    commandWriter.write(serverResponse);
+
+                    commandSocket.setSoTimeout(PASSWORD_TIMEOUT);
+
+                    try {
+                        phase = commandReader.readByte();
+                        type = commandReader.readByte();
+                        size = commandReader.readInt();
+                        clientResponse = new String(commandReader.readNBytes(size));
+                    } catch (SocketTimeoutException e) {
+
+                        commandSocket.setSoTimeout(0);
+
+                        phase = commandReader.readByte();
+                        type = commandReader.readByte();
+                        size = commandReader.readInt();
+                        clientResponse = new String(commandReader.readNBytes(size));
+
+                        serverMessage = "Disconnected: Password timeout";
+                        serverResponse = getAuthRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(),
+                                serverMessage);
+                        commandWriter.write(serverResponse);
+
+                        printDisconnectionMessage(Integer.toString(commandSocket.getPort()),
+                                commandSocket.getInetAddress().toString(), "Password timeout", true);
+                        return false;
+                    }
+                    commandSocket.setSoTimeout(0);
+
+                    if (AuthenticatePassword(clientUsername, clientResponse)) {
+
+                        serverMessage = generateToken(clientUsername,
+                                (int) (clientUsername.length() * AUTH_TOKEN_LENGTH));
+
+                        serverResponse = getAuthRequestByteArray(Auth_Phase, Auth_Success, serverMessage.length(),
+                                serverMessage);
+
+                        clientToken = serverMessage;
+                        clientPort = commandSocket.getPort();
+                        clientIP = commandSocket.getInetAddress();
+
+                        String[] clientInfo = {Integer.toString(clientPort), clientIP.toString()};
+                        tokenMap.put(clientToken, clientInfo);
+
+                        commandWriter.write(serverResponse);
+
+                        return true;
+                    } else {
+                        authAttempts++;
+                        failedMessage = String.format("Incorrect password | " + (3 - authAttempts)
+                                + " attempt%s left | ", authAttempts == 1 ? "s" : "");
+                    }
+                }
+                serverMessage = "Authentication failed: Too many unsuccessful attempts to authenticate connection";
+                serverResponse = getAuthRequestByteArray(Auth_Phase, Auth_Fail, serverMessage.length(), serverMessage);
+                commandWriter.write(serverResponse);
+
+                printDisconnectionMessage(Integer.toString(commandSocket.getPort()),
+                        commandSocket.getInetAddress().toString(), "Too many failed attempt to connect",
+                        true);
+
+                return false;
+            }
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    /**
+     * Initializes the querying phase.
+     */
+    private void QueryingPhase() {
+
+        URL weatherURL;
+        URL apodURL;
+
+        HttpURLConnection apiConnection;
+
+        String serverMessage = "";
+
+        byte[] serverResponse;
+
+        QueryTCPPayload clientResponse;
+
+        try {
+
+            fileReader = new DataInputStream(new DataInputStream(fileSocket.getInputStream()));
+            fileWriter = new DataOutputStream(new DataOutputStream(fileSocket.getOutputStream()));
+
+            serverMessage = serverWelcomeMessage(clientUsername);
+            serverResponse = getAuthRequestByteArray(Query_Phase, Query_Success, serverMessage.length(), serverMessage);
+
+            commandWriter.write(serverResponse);
+
+            while (true) {
+                //Getting response from the client.
+                clientResponse = clientQueryResponse(commandReader);
+                //Checks if the message is from the query phase or not, if not disconnect client.
+                if (clientResponse.getPhase() == Auth_Phase) {
+
+                    serverMessage = "INVALID REQUEST PHASE | current phase: querying phase, given: auth phase";
+                    serverResponse = getAuthRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
+                            serverMessage);
+
+                    commandWriter.write(serverResponse);
+                    printDisconnectionMessage(tokenMap.get(clientResponse.getToken())[0],
+                            tokenMap.get(clientResponse.getToken())[1], "Invalid request phase | current phase: " +
+                                    "querying phase, given: auth phase",
+                            true);
+                    return;
+                }
+                // Verifying the client token, if not valid, disconnect client.
+                if (!verifyToken(clientResponse.getToken(), commandSocket)) {
+                    serverMessage = "INVALID TOKEN, Disconnecting from server...";
+                    serverResponse = getAuthRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
+                            serverMessage);
+
+                    commandWriter.write(serverResponse);
+                    printDisconnectionMessage(tokenMap.get(clientResponse.getToken())[0],
+                            tokenMap.get(clientResponse.getToken())[1], "Invalid token",
+                            true);
+                    return;
+                }
+                // Checks if the request is for the Image of the Day.
+                if (clientResponse.getType() == Query_Image) {
+                    apodURL = new URL(APOD_BASE_URL + clientResponse.getMessage());
+
+                    apiConnection = (HttpURLConnection) apodURL.openConnection();
+                    apiConnection.setRequestMethod("GET");
+
+                    int status = apiConnection.getResponseCode();
+
+                    String line = "";
+                    StringBuilder lines = new StringBuilder();
+
+                    BufferedReader buffredReader = getStreamReader(status, apiConnection);
+
+                    while ((line = buffredReader.readLine()) != null) {
+                        // Gets everything that could be retrieved from the API response.
+                        lines.append(line);
+                    }
+                    // Gets the image url from the returned String from the API
+                    String imageURL = getUrlFromText(lines.toString().split("\""));
+                    buffredReader.close();
+                    // Converting the image into a byte array.
+                    byte[] imageByteArray = imageToByteArray(new URL(imageURL));
+
+                    serverMessage = Integer.toString(Arrays.hashCode(imageByteArray));
+                    serverResponse = getAuthRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
+                            serverMessage);
+                    commandWriter.write(serverResponse);
+
+                    serverResponse = queryMessage(Query_Phase, Query_Success, imageByteArray.length,
+                            imageByteArray);
+                    fileWriter.write(serverResponse);
+
+                    clientResponse = clientQueryResponse(commandReader);
+                    //Checks the integrity of the sent image, if the image is corrupted sends a message and Query_Exit
+                    // to the client. If the image is valid, sends a message and Query_Success to the client.
+                    if (clientResponse.getType() == Query_Image_Valid) {
+                        serverMessage = "Image validated";
+                        serverResponse = getAuthRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
+                                serverMessage);
+                    } else {
+                        serverMessage = "Image is corrupted";
+                        serverResponse = getAuthRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
+                                serverMessage);
+                    }
+                    commandWriter.write(serverResponse);
+
+                }
+                // Checks if the request is Weather on Mars.
+                else if (clientResponse.getType() == Query_Weather) {
+                    weatherURL = new URL(INSIGHT_BASE_URL);
+
+                    apiConnection = (HttpURLConnection) weatherURL.openConnection();
+                    apiConnection.setRequestMethod("GET");
+                    int status = apiConnection.getResponseCode();
+
+                    String line = "";
+                    StringBuilder lines = new StringBuilder();
+
+                    BufferedReader buffredReader = getStreamReader(status, apiConnection);
+
+                    while ((line = buffredReader.readLine()) != null) {
+                        lines.append(line);
+                    }
+                    buffredReader.close();
+                    serverMessage = filteredWeather(lines.toString());
+                    serverResponse = getAuthRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
+                            serverMessage);
+
+                    commandWriter.write(serverResponse);
+
+                } else if (clientResponse.getType() == Query_Exit) {
+                    serverMessage = "Disconnected from the server.";
+                    serverResponse = getAuthRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
+                            serverMessage);
+                    commandWriter.write(serverResponse);
+
+                    printDisconnectionMessage(tokenMap.get(clientResponse.getToken())[0],
+                            tokenMap.get(clientResponse.getToken())[1], "Client request",
+                            false);
+
+                    return;
+                }
+            }
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
     }
 
     private void FillClients() {
@@ -323,6 +403,12 @@ public class Server {
         }
     }
 
+    /**
+     * Given a username, returns true if the username is valid and false otherwise.
+     *
+     * @param username the username to be validated.
+     * @return returns true if the username is valid and false otherwise.
+     */
     private boolean AuthenticateUsername(String username) {
         for (Client c : this.clients) {
             if (c.getUsername().equals(username)) {
@@ -332,6 +418,13 @@ public class Server {
         return false;
     }
 
+    /**
+     * Given a username and a password, returns true if the password is valid and false otherwise.
+     *
+     * @param username the username corresponding to the password to check.
+     * @param password the password to be checked.
+     * @return returns true if the password is valid and false otherwise.
+     */
     private boolean AuthenticatePassword(String username, String password) {
         for (Client c : this.clients) {
             if (c.getUsername().equals(username) && c.getPassword().equals(password)) {
@@ -341,6 +434,13 @@ public class Server {
         return false;
     }
 
+    /**
+     * Given the status of given connection, returns an InputStream if the status is OK and an ErrorStream otherwise.
+     *
+     * @param status     the status of a given connection.
+     * @param connection the connection that would return the InputStream of the ErrorStream.
+     * @return returns an InputStream if the status is OK and an ErrorStream otherwise.
+     */
     private BufferedReader getStreamReader(int status, HttpURLConnection connection) {
         try {
             if (status > 299) {
@@ -353,6 +453,13 @@ public class Server {
         }
     }
 
+    /**
+     * Validates a given token.
+     *
+     * @param token  the token to be verified.
+     * @param socket the socket of the user whose token is to be verified.
+     * @return true if the token is verified and false otherwise.
+     */
     private boolean verifyToken(String token, Socket socket) {
         String clientPort = tokenMap.get(token)[0];
         String clientIP = tokenMap.get(token)[1];
@@ -363,13 +470,45 @@ public class Server {
         return clientPort.equals(port) && clientIP.equals(IP);
     }
 
-    private void printDisconnectionMessage(String port, String IP, String reason, boolean isError){
-        if(isError) {
+    /**
+     * Prints a detailed message about the client whose connection has been terminated.
+     *
+     * @param port    the port number corresponding to a certain client.
+     * @param IP      the IP address corresponding to a certain client.
+     * @param reason  a String indicating the reason of the disconnection.
+     * @param isError a flag to print the detailed message as an error message or a regular message.
+     */
+    private void printDisconnectionMessage(String port, String IP, String reason, boolean isError) {
+        if (isError) {
             System.err.println("Client with port number: " + port + " and IP: "
                     + IP + " has disconnected from the server\nReason: " + reason + ".");
-        }else {
-            System.err.println("Client with port number: " + port + " and IP: "
+        } else {
+            System.out.println("Client with port number: " + port + " and IP: "
                     + IP + " has disconnected from the server\nReason: " + reason + ".");
         }
+    }
+
+
+    /**
+     * Given a DataInputStream object, returns a QueryTCPPayload object that contains the elements the the
+     * DataInputStream object has read.
+     *
+     * @param reader The DataInputStream object
+     * @return returns a QueryTCPPayload object that contains the elements the the DataInputStream object has read.
+     */
+    private QueryTCPPayload clientQueryResponse(DataInputStream reader) {
+        try {
+            byte phase = reader.readByte();
+            byte type = reader.readByte();
+            int mSize = reader.readInt();
+            int tSize = reader.readInt();
+            String message = new String(reader.readNBytes(mSize));
+            String token = new String(reader.readNBytes(tSize));
+            return new QueryTCPPayload(phase, type, mSize, tSize, message, token);
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 }

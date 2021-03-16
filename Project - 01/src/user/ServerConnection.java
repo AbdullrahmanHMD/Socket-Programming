@@ -1,5 +1,6 @@
 package user;
 
+import utils.QueryTCPPayload;
 import utils.TCPPayload;
 
 import java.io.*;
@@ -8,7 +9,7 @@ import java.util.Arrays;
 
 import static utils.Utilities.*;
 
-public class AuthenticatedConnection {
+public class ServerConnection {
 
     private final String serverAddress;
     private final int serverPort;
@@ -16,11 +17,14 @@ public class AuthenticatedConnection {
     private DataInputStream reader;
     private DataOutputStream writer;
 
-    public AuthenticatedConnection(String serverAddress, int serverPort) {
+    public ServerConnection(String serverAddress, int serverPort) {
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
     }
 
+    /**
+     * Initializes the socket and the DataInputStream and the DataOutputStream.
+     */
     public void EstablishConnection() {
         try {
             socket = new Socket(serverAddress, serverPort);
@@ -33,6 +37,12 @@ public class AuthenticatedConnection {
         }
     }
 
+    /**
+     * Writes the given message into an output stream and then reads from an input stream and finally, returns an
+     * object containing the data read from the input stream.
+     * @param message   the given message to be written into the output stream.
+     * @return          returns an object containing the data read from the input stream.
+     */
     public TCPPayload sendRequest(byte[] message) {
         TCPPayload response = null;
         byte phase;
@@ -56,6 +66,45 @@ public class AuthenticatedConnection {
         return response;
     }
 
+    /**
+     * Writes the given message into an output stream and then reads from an input stream and finally, returns an
+     * object containing the data read from the input stream.
+     * @param message   the given message to be written into the output stream.
+     * @return          returns an object containing the data read from the input stream.
+     */
+    public QueryTCPPayload sendQueryRequest(byte[] message) {
+        QueryTCPPayload response = null;
+        byte phase;
+        byte type;
+        int mSize;
+        int tSize;
+        String token;
+        String msg;
+
+        try {
+            writer.write(message);
+
+            phase = reader.readByte();
+            type = reader.readByte();
+            mSize = reader.readInt();
+            tSize = reader.readInt();
+            msg = new String(reader.readNBytes(mSize));
+            token = new String(reader.readNBytes(tSize));
+
+            response = new QueryTCPPayload(phase, type, mSize, tSize, msg, token);
+
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
+        return response;
+    }
+
+    /**
+     * Writes the given message into an output stream and then reads from an input stream and finally, returns an
+     * object containing the data read from the input stream.
+     * @param message   the given message to be written into the output stream.
+     * @return          returns an object containing the data read from the input stream.
+     */
     public TCPPayload sendImageRequest(byte[] message) {
         TCPPayload response = null;
         byte phase;
@@ -79,6 +128,12 @@ public class AuthenticatedConnection {
         return response;
     }
 
+    /**
+     * Reads the input written into the input stream and returns an object containing the data read from the input
+     * stream.
+     * @return  an object containing the data read from the input stream.
+     *
+     */
     public TCPPayload readFromServer() {
         TCPPayload response = null;
         byte phase;
@@ -97,6 +152,9 @@ public class AuthenticatedConnection {
         return response;
     }
 
+    /**
+     * Closes the input and output streams and the socket.
+     */
     public void TerminateConnection() {
         try {
             reader.close();

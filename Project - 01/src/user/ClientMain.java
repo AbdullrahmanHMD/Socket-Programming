@@ -7,6 +7,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Scanner;
 import java.util.regex.Pattern;
 
@@ -14,6 +15,9 @@ import static utils.Utilities.*;
 
 public class ClientMain {
 
+
+    private static ServerConnection commandConnection;
+    private static ServerConnection fileConnection;
     private static String accessToken;
 
     public static void main(String[] args) {
@@ -24,16 +28,25 @@ public class ClientMain {
         }
     }
 
+    /**
+     * Initializes the authentication phase.
+     * @return true if the authentication is successful and false otherwise.
+     */
     private static boolean InitializeAuthentication() {
 
         TCPPayload serverResponse;
         byte[] clientResponse;
         String clientMessage;
 
-        AuthenticatedConnection connectionToServer =
-                new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, AUTH_PORT);
+        commandConnection =
+                new ServerConnection(DEFAULT_SERVER_ADDRESS, COMMAND_PORT);
 
-        connectionToServer.EstablishConnection();
+        fileConnection =
+                new ServerConnection(DEFAULT_SERVER_ADDRESS, FILE_PORT);
+
+        commandConnection.EstablishConnection();
+        fileConnection.EstablishConnection();
+
         Scanner reader = new Scanner(System.in);
 
         System.out.println("Establishing network...");
@@ -41,24 +54,25 @@ public class ClientMain {
 
         clientMessage = reader.nextLine();
 
-        clientResponse = getRequestByteArray(Auth_Phase, Auth_Request, clientMessage.length(), clientMessage);
-        serverResponse = connectionToServer.sendRequest(clientResponse);
-
+        clientResponse = getAuthRequestByteArray(Auth_Phase, Auth_Request, clientMessage.length(), clientMessage);
+        serverResponse = commandConnection.sendRequest(clientResponse);
+        // Checks if an Auth_Fail was sent after entering the username.
         if (serverResponse.getType() == Auth_Fail) {
             System.err.println(serverResponse.getMessage());
-            connectionToServer.TerminateConnection();
+            commandConnection.TerminateConnection();
             return false;
         }
 
         while (serverResponse.getType() == Auth_Challenge) {
             System.out.println(serverResponse.getMessage());
             clientMessage = reader.nextLine();
-            clientResponse = getRequestByteArray(Auth_Phase, Auth_Request, clientMessage.length(), clientMessage);
-            serverResponse = connectionToServer.sendRequest(clientResponse);
+            clientResponse = getAuthRequestByteArray(Auth_Phase, Auth_Request, clientMessage.length(), clientMessage);
+            serverResponse = commandConnection.sendRequest(clientResponse);
         }
+        // Checks if an Auth_Fail was sent after entering the password.
         if (serverResponse.getType() == Auth_Fail) {
             System.err.println(serverResponse.getMessage());
-            connectionToServer.TerminateConnection();
+            commandConnection.TerminateConnection();
             return false;
 
         } else if (serverResponse.getType() == Auth_Success) {
@@ -70,20 +84,21 @@ public class ClientMain {
         return false;
     }
 
+    /**
+     * Initializes the querying phase.
+     */
     private static void InitializeQuerying() {
-        TCPPayload serverResponse = null;
+        TCPPayload serverCommandResponse = null;
         byte[] clientResponse = null;
         String clientMessage = null;
         byte query = 0;
-        AuthenticatedConnection connectionToServer =
-                new AuthenticatedConnection(DEFAULT_SERVER_ADDRESS, QUERY_PORT);
 
-        connectionToServer.EstablishConnection();
-        System.out.println(connectionToServer.readFromServer().getMessage());
+        System.out.println(commandConnection.readFromServer().getMessage());
 
         Scanner reader = new Scanner(System.in);
         clientMessage = reader.nextLine();
         query = getQuery(clientMessage);
+        
         while (true) {
             while (query == 0) {
                 System.err.println("Invalid query, try again");
@@ -92,26 +107,58 @@ public class ClientMain {
                 query = getQuery(clientMessage);
             }
             if (query == Query_Image) {
-
-                clientResponse = getRequestByteArray(Query_Phase, query, accessToken.length(), accessToken);
-                serverResponse = connectionToServer.sendImageRequest(clientResponse);
+                clientResponse = getQueryRequestByteArray(Query_Phase, query, clientMessage.length(),
+                        accessToken.length(), clientMessage, accessToken);
 
                 System.out.println("Fetching image...");
-                createImage(serverResponse.getByteMessage());
-                System.out.println("Image downloaded!");
+                serverCommandResponse = commandConnection.sendRequest(clientResponse);
+                // Checks if a Query_Fail was sent from the server, if so disconnect the client.
+                if (serverCommandResponse.getType() == Query_Exit) {
+                    System.err.println(serverCommandResponse.getMessage());
+                    commandConnection.TerminateConnection();
+                    return;
+                }
+                // Get the hashcode of the image from the server.
+                String imageHash = serverCommandResponse.getMessage();
+
+                serverCommandResponse = fileConnection.sendImageRequest(clientResponse);
+
+                boolean imageIsValid = verifyImage(imageHash, serverCommandResponse.getByteMessage());
+
+                if (imageIsValid) {
+                    clientResponse = getQueryRequestByteArray(Query_Phase, Query_Image_Valid, clientMessage.length(),
+                            accessToken.length(), clientMessage, accessToken);
+                    createImage(serverCommandResponse.getByteMessage());
+                    System.out.println("Image downloaded!");
+                } else {
+                    clientResponse = getQueryRequestByteArray(Query_Phase, Query_Image_Invalid, clientMessage.length(),
+                            accessToken.length(), clientMessage, accessToken);
+                }
+                serverCommandResponse = commandConnection.sendRequest(clientResponse);
+                System.out.println(serverCommandResponse.getMessage());
+
 
             } else if (query == Query_Weather) {
                 System.out.println("Fetching weather state...");
-                clientResponse = getRequestByteArray(Query_Phase, query, accessToken.length(), accessToken);
-                serverResponse = connectionToServer.sendRequest(clientResponse);
 
-                System.out.println(serverResponse.getMessage());
+                clientResponse = getQueryRequestByteArray(Query_Phase, query, clientMessage.length(),
+                        accessToken.length(), clientMessage, accessToken);
+                serverCommandResponse = commandConnection.sendRequest(clientResponse);
+
+                if (serverCommandResponse.getType() == Query_Exit) {
+                    System.err.println(serverCommandResponse.getMessage());
+                    commandConnection.TerminateConnection();
+                    return;
+                }
+
+                System.out.println(serverCommandResponse.getMessage());
             } else if (query == Query_Exit) {
-                clientResponse = getRequestByteArray(Query_Phase, query, accessToken.length(), accessToken);
-                serverResponse = connectionToServer.sendRequest(clientResponse);
+                clientResponse = getQueryRequestByteArray(Query_Phase, query, clientMessage.length(),
+                        accessToken.length(), clientMessage, accessToken);
+                serverCommandResponse = commandConnection.sendRequest(clientResponse);
 
-                System.err.println(serverResponse.getMessage());
-                connectionToServer.TerminateConnection();
+                System.err.println(serverCommandResponse.getMessage());
+                commandConnection.TerminateConnection();
                 return;
             }
             System.out.println("Enter a request:");
@@ -120,6 +167,11 @@ public class ClientMain {
         }
     }
 
+    /**
+     * Given a String message, returns the corresponding query type.
+     * @param message   the given message.
+     * @return          returns the corresponding query type.
+     */
     private static byte getQuery(String message) {
         if (Pattern.compile(dateRegex).matcher(message).matches())
             return Query_Image;
@@ -130,6 +182,10 @@ public class ClientMain {
         return 0;
     }
 
+    /**
+     * Creates an image from a byte array and places it the programs file.
+     * @param byteArray the byte array to create the image from.
+     */
     private static void createImage(byte[] byteArray) {
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(byteArray);
@@ -142,4 +198,15 @@ public class ClientMain {
         }
     }
 
+    /**
+     * Verifies the image given according to its hashcode.
+     * @param receivedImageHashcode the hashcode sent from the server.
+     * @param serverImage           the byte array sent from the server.
+     * @return                      true if the hashcode provided from the server matches the hashcode of the
+     *                              byte array
+     */
+    private static boolean verifyImage(String receivedImageHashcode, byte[] serverImage) {
+        int imageHashcode = Integer.parseInt(receivedImageHashcode);
+        return imageHashcode == Arrays.hashCode(serverImage);
+    }
 }
