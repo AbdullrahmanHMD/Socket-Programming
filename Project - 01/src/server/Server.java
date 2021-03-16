@@ -3,15 +3,12 @@ package server;
 import user.Client;
 import utils.QueryTCPPayload;
 
-import java.util.ArrayList;
+import java.util.*;
 
 import static utils.Utilities.*;
 
 import java.io.*;
 import java.net.*;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Random;
 import java.util.regex.Pattern;
 
 public class Server extends Thread {
@@ -394,12 +391,22 @@ public class Server extends Thread {
         }
     }
 
+    /**
+     * Fills in the ArrayList of clients from the clients.txt file located in the Project - 01 folder.
+     */
     private void FillClients() {
-        String[] username = {"Abdul", "Kuze", "Zeyd"};
-        String[] passwords = {"1232abc", "1357", "12345"};
-
-        for (int i = 0; i < username.length; i++) {
-            this.clients.add(new Client(username[i], passwords[i]));
+        try {
+            File clients = new File("clients.txt");
+            Scanner reader = new Scanner(clients);
+            while (reader.hasNextLine()) {
+                String username = reader.nextLine();
+                String password = reader.nextLine();
+                this.clients.add(new Client(username, password));
+            }
+            reader.close();
+        } catch (FileNotFoundException e) {
+            System.out.println("An error occurred.");
+            e.printStackTrace();
         }
     }
 
@@ -488,7 +495,6 @@ public class Server extends Thread {
         }
     }
 
-
     /**
      * Given a DataInputStream object, returns a QueryTCPPayload object that contains the elements the the
      * DataInputStream object has read.
@@ -510,5 +516,14 @@ public class Server extends Thread {
         }
 
         return null;
+    }
+
+    /**
+     * Adds a new client to the the client list
+     * @param username  the clients username
+     * @param password  the clients password.
+     */
+    private void addClient(String username, String password){
+        this.clients.add(new Client(username, password));
     }
 }
