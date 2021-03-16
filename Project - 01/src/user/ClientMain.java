@@ -3,6 +3,8 @@ package user;
 import utils.TCPPayload;
 
 import javax.imageio.ImageIO;
+import javax.swing.*;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -98,7 +100,7 @@ public class ClientMain {
         Scanner reader = new Scanner(System.in);
         clientMessage = reader.nextLine();
         query = getQuery(clientMessage);
-        
+
         while (true) {
             while (query == 0) {
                 System.err.println("Invalid query, try again");
@@ -129,6 +131,7 @@ public class ClientMain {
                     clientResponse = getQueryRequestByteArray(Query_Phase, Query_Image_Valid, clientMessage.length(),
                             accessToken.length(), clientMessage, accessToken);
                     createImage(serverCommandResponse.getByteMessage());
+                    showImage(serverCommandResponse.getByteMessage());
                     System.out.println("Image downloaded!");
                 } else {
                     clientResponse = getQueryRequestByteArray(Query_Phase, Query_Image_Invalid, clientMessage.length(),
@@ -208,5 +211,25 @@ public class ClientMain {
     private static boolean verifyImage(String receivedImageHashcode, byte[] serverImage) {
         int imageHashcode = Integer.parseInt(receivedImageHashcode);
         return imageHashcode == Arrays.hashCode(serverImage);
+    }
+
+    /**
+     * Displays an image that is constructed from a byte array.
+     * @param imageByteArray    the byte array to construct the image from.
+     */
+    private static void showImage(byte[] imageByteArray) {
+        JFrame frame = new JFrame("Image of the Day");
+        frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+
+        ImageIcon image = new ImageIcon(imageByteArray);
+        JLabel label = new JLabel();
+        label.setIcon(image);
+
+        frame.getContentPane().add(label, BorderLayout.CENTER);
+        frame.pack();
+
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+
     }
 }
