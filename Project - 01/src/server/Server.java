@@ -3,6 +3,7 @@ package server;
 import user.Client;
 import utils.QueryTCPPayload;
 
+import javax.management.Query;
 import java.util.*;
 
 import static utils.Utilities.*;
@@ -369,8 +370,8 @@ public class Server extends Thread {
                         serverResponse = getAuthRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
                                 serverMessage);
                     } else {
-                        serverMessage = "Image is corrupted";
-                        serverResponse = getAuthRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
+                        serverMessage = "Image is corrupted | Try another image";
+                        serverResponse = getAuthRequestByteArray(Query_Phase, Query_Request, serverMessage.length(),
                                 serverMessage);
                     }
                     commandWriter.write(serverResponse);

@@ -228,6 +228,7 @@ public class ClientMain {
         frame.getContentPane().add(label, BorderLayout.CENTER);
         frame.pack();
 
+        frame.setSize(500,500);
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
 
