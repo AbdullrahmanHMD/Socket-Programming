@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 public class Utilities {
 
     // URL and connection-related constants.
-//    public static final String API_KEY = "MPI3vpMK3K6dxIoNtMSrBSNbcffs5hb4KzCYx0hY";
+    //public static final String API_KEY = "MPI3vpMK3K6dxIoNtMSrBSNbcffs5hb4KzCYx0hY";
     public static final String API_KEY = "DEMO_KEY";
     public static final String APOD_BASE_URL = "https://api.nasa.gov/planetary/apod?api_key=" + API_KEY +"&date=";
     public static final String INSIGHT_BASE_URL = "https://api.nasa.gov/insight_weather/?api_key="
@@ -38,6 +38,8 @@ public class Utilities {
     public static final byte Query_Image_Valid = 8;
     public static final byte Query_Image_Invalid = 9;
 
+    public static final int QUERY_TIMEOUT = 10000;
+
     public static final byte Query_Exit = -1;
 
     // Regular expressions.
@@ -49,6 +51,10 @@ public class Utilities {
     // Image-related constants.
     public static final String DEFAULT_IMAGE_PATH = "image_of_the_day.";
     public static final String IMAGE_FORMAT = "jpg";
+
+    // Fail tests.
+    public static final String FAIL_TOKEN = "zz";
+    public static final int FAIL_HASHCODE = 1000;
 
     /**
      * Given certain parameters, creates a TCPPayload.

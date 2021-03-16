@@ -269,13 +269,38 @@ public class Server extends Thread {
             fileWriter = new DataOutputStream(new DataOutputStream(fileSocket.getOutputStream()));
 
             serverMessage = serverWelcomeMessage(clientUsername);
-            serverResponse = getAuthRequestByteArray(Query_Phase, Query_Success, serverMessage.length(), serverMessage);
+            serverResponse = getAuthRequestByteArray(Query_Phase, Query_Request, serverMessage.length(), serverMessage);
 
             commandWriter.write(serverResponse);
 
             while (true) {
+                commandSocket.setSoTimeout(QUERY_TIMEOUT);
+
                 //Getting response from the client.
-                clientResponse = clientQueryResponse(commandReader);
+                try {
+                    byte phase = commandReader.readByte();
+                    byte type = commandReader.readByte();
+                    int mSize = commandReader.readInt();
+                    int tSize = commandReader.readInt();
+                    String message = new String(commandReader.readNBytes(mSize));
+                    String token = new String(commandReader.readNBytes(tSize));
+                    clientResponse = new QueryTCPPayload(phase, type, mSize, tSize, message, token);
+                } catch (SocketTimeoutException e) {
+                    commandSocket.setSoTimeout(0);
+
+                    clientResponse = clientQueryResponse(commandReader);
+
+                    serverMessage = "Query timeout";
+                    serverResponse = getAuthRequestByteArray(Query_Phase, Query_Exit, serverMessage.length(),
+                            serverMessage);
+
+                    commandWriter.write(serverResponse);
+                    printDisconnectionMessage(tokenMap.get(clientResponse.getToken())[0],
+                            tokenMap.get(clientResponse.getToken())[1], "query timeout",
+                            true);
+                    return;
+                }
+
                 //Checks if the message is from the query phase or not, if not disconnect client.
                 if (clientResponse.getPhase() == Auth_Phase) {
 
@@ -304,6 +329,7 @@ public class Server extends Thread {
                 }
                 // Checks if the request is for the Image of the Day.
                 if (clientResponse.getType() == Query_Image) {
+                    commandSocket.setSoTimeout(0);
                     apodURL = new URL(APOD_BASE_URL + clientResponse.getMessage());
 
                     apiConnection = (HttpURLConnection) apodURL.openConnection();
@@ -327,11 +353,11 @@ public class Server extends Thread {
                     byte[] imageByteArray = imageToByteArray(new URL(imageURL));
 
                     serverMessage = Integer.toString(Arrays.hashCode(imageByteArray));
-                    serverResponse = getAuthRequestByteArray(Query_Phase, Query_Success, serverMessage.length(),
+                    serverResponse = getAuthRequestByteArray(Query_Phase, Query_Request, serverMessage.length(),
                             serverMessage);
                     commandWriter.write(serverResponse);
 
-                    serverResponse = queryMessage(Query_Phase, Query_Success, imageByteArray.length,
+                    serverResponse = queryMessage(Query_Phase, Query_Request, imageByteArray.length,
                             imageByteArray);
                     fileWriter.write(serverResponse);
 
@@ -352,6 +378,7 @@ public class Server extends Thread {
                 }
                 // Checks if the request is Weather on Mars.
                 else if (clientResponse.getType() == Query_Weather) {
+                    commandSocket.setSoTimeout(0);
                     weatherURL = new URL(INSIGHT_BASE_URL);
 
                     apiConnection = (HttpURLConnection) weatherURL.openConnection();
@@ -510,20 +537,22 @@ public class Server extends Thread {
             int tSize = reader.readInt();
             String message = new String(reader.readNBytes(mSize));
             String token = new String(reader.readNBytes(tSize));
+
             return new QueryTCPPayload(phase, type, mSize, tSize, message, token);
+
         } catch (IOException | NullPointerException e) {
             e.printStackTrace();
+
+            return null;
+        }}
+
+        /**
+         * Adds a new client to the the client list
+         *
+         * @param username the clients username
+         * @param password the clients password.
+         */
+        private void addClient (String username, String password){
+            this.clients.add(new Client(username, password));
         }
-
-        return null;
     }
-
-    /**
-     * Adds a new client to the the client list
-     * @param username  the clients username
-     * @param password  the clients password.
-     */
-    private void addClient(String username, String password){
-        this.clients.add(new Client(username, password));
-    }
-}
